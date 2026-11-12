@@ -26,7 +26,7 @@ from openai import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 import law
-from analyzer import AnalysisError, Settings, analyze
+from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze
 from demo import DEMO_KINDS, demo_result
 
 try:  # 아이폰 HEIC 사진 지원(설치돼 있을 때만)
@@ -82,6 +82,8 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-card {border: 1px solid #e1e4e8; border-left: 6px solid #d92d20; border-radius: 12px; background: #fff;
           padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
+.sv-card.sup {border-left-color: #b54708;}
+.sv-card.sup .no {color: #b54708;}
 .sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
 .sv-card .ev {font-size: 0.86rem; color: #57606a; line-height: 1.45;}
 .sv-sec {margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d8dde3;}
@@ -175,25 +177,39 @@ def render_html(markup: str) -> None:
     st.markdown(f'<div class="sv-wrap">{markup}</div>', unsafe_allow_html=True)
 
 
+def count_by_source(result: dict) -> tuple[int, int]:
+    """(AI가 확정한 위반 수, 감독자가 추가한 위반 수)"""
+    n_sup = sum(1 for f in result["findings"] if f.get("source") == "supervisor")
+    return len(result["findings"]) - n_sup, n_sup
+
+
 def steps_html(result: dict) -> str:
     verdict = result["verdict"]
-    n = len(result["findings"])
+    n_ai, n_sup = count_by_source(result)
+    if verdict == "not_work":
+        step2 = ("진행 안 함", "skip")
+    elif n_ai:
+        step2 = (f"명백한 위반 {n_ai}건", "done")
+    else:
+        step2 = ("명백한 위반 없음" if n_sup else "위반 없음 → 종료", "stop")
+    if n_ai or n_sup:
+        step3 = ("작성 완료" + (f" · 감독자 추가 {n_sup}건" if n_sup else ""), "done")
+    else:
+        step3 = ("진행 안 함", "skip")
     steps = [
         ("1단계 작업 상황", "작업 사진" if verdict != "not_work" else "비작업 → 종료",
          "done" if verdict != "not_work" else "stop"),
-        ("2단계 위반 검증",
-         {"not_work": "진행 안 함", "compliant": "위반 없음 → 종료", "violation": f"명백한 위반 {n}건"}[verdict],
-         {"not_work": "skip", "compliant": "stop", "violation": "done"}[verdict]),
-        ("3단계 법령·대책", "작성 완료" if verdict == "violation" else "진행 안 함",
-         "done" if verdict == "violation" else "skip"),
+        ("2단계 위반 검증", *step2),
+        ("3단계 법령·대책", *step3),
     ]
     chips = "".join(f'<div class="sv-step {cls}"><b>{esc(t)}</b>{esc(d)}</div>' for t, d, cls in steps)
     return f'<div class="sv-steps">{chips}</div>'
 
 
 def finding_card_html(f: dict) -> str:
+    by_supervisor = f.get("source") == "supervisor"
     parts = [
-        f'<div class="no">위험요인 {f["id"]}</div>',
+        f'<div class="no">위험요인 {f["id"]}{" · 감독자 현장 확인으로 추가" if by_supervisor else ""}</div>',
         f'<div class="name">{esc(f["hazard_name"])}</div>',
         f'<div class="ev">{esc(" · ".join(x for x in (f["target"], f["evidence"]) if x))}</div>',
         '<div class="sv-sec"><div class="sv-lab">📜 관련 법령 조항</div>',
@@ -224,7 +240,7 @@ def finding_card_html(f: dict) -> str:
             f'<div class="sv-ref">{esc(f["kosha_guide"])}<br>'
             "<small>AI가 기억으로 제시한 지침명입니다. 번호·내용은 KOSHA 누리집에서 확인하세요.</small></div></div>"
         )
-    return f'<div class="sv-card">{"".join(parts)}</div>'
+    return f'<div class="sv-card{" sup" if by_supervisor else ""}">{"".join(parts)}</div>'
 
 
 def request_message(result: dict) -> str:
@@ -242,48 +258,76 @@ def request_message(result: dict) -> str:
     return "\n".join(lines).strip()
 
 
-def render_unverifiable(items: list[str]) -> None:
-    if not items:
-        return
-    with st.expander(f"사진만으로 판단할 수 없는 항목 {len(items[:5])}건 (판정 제외 · 현장 확인)"):
-        for item in items[:5]:
-            st.markdown(f"- {item}")
+def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[dict]:
+    """사진만으로 판단할 수 없는 항목. 감독자가 현장에서 확인한 항목을 골라 위험요인으로 추가할 수 있다.
+
+    '추가' 버튼을 누른 경우에만 선택 목록 [{"index", "note"}]을 돌려준다.
+    """
+    pending = [(i, u) for i, u in enumerate(result["unverifiable"]) if not u.get("added")]
+    if not pending:
+        return []
+    selections = []
+    with st.expander(f"사진만으로 판단할 수 없는 항목 {len(pending)}건 (판정 제외 · 현장 확인)", expanded=True):
+        st.caption("현장에서 직접 확인해 위반이 맞는 항목만 체크하면 위험요인으로 추가됩니다.")
+        for i, item in pending:
+            if st.checkbox(item["text"], key=f"unv_{widget_key}_{i}"):
+                note = st.text_input(
+                    f"현장 확인 내용 (선택) · 추가될 위험요인: {item['hazard_name'] or '미정'}",
+                    key=f"unv_note_{widget_key}_{i}", max_chars=200,
+                    placeholder="예: 높이 약 6m, 작업자 3명 모두 안전대 미체결",
+                )
+                selections.append({"index": i, "note": note})
+        clicked = st.button(
+            f"➕ 선택한 {len(selections)}건을 위험요인으로 추가" if selections else "➕ 위험요인으로 추가",
+            key=f"unv_add_{widget_key}", width="stretch", disabled=not (selections and can_add),
+        )
+        if selections and not can_add:
+            st.caption("데모 모드에서는 추가할 수 없습니다. OpenAI API 키가 필요합니다.")
+    return selections if clicked else []
 
 
-def render_result(result: dict) -> None:
-    verdict, stage1 = result["verdict"], result["stage1"]
+def render_result(result: dict, widget_key: str, can_add: bool) -> list[dict]:
+    """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다."""
+    verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
         st.warning("🧪 데모 결과입니다. 올린 사진을 판독한 것이 아니라 화면 확인용 고정 예시입니다.")
     render_html(steps_html(result))
+    selections: list[dict] = []
 
     if verdict == "not_work":
         render_html(
             '<div class="sv-verdict na"><div class="t">[해당없음] 작업 진행 사진이 아닙니다</div>'
             f'<div class="d">{esc(stage1.get("scene", ""))}<br>{esc(stage1.get("reason", ""))}</div></div>'
         )
-    elif verdict == "compliant":
+    elif not findings:
         render_html(
             '<div class="sv-verdict ok"><div class="t">[위험요소 없음 / 안전수칙 준수]</div>'
             f'<div class="d">{esc(result["stage2"].get("observations", ""))}</div></div>'
         )
-        render_unverifiable(result["unverifiable"])
+        selections = render_unverifiable(result, widget_key, can_add)
     else:
-        findings = result["findings"]
+        n_ai, n_sup = count_by_source(result)
+        if n_sup and n_ai:
+            suffix = f" (감독자 추가 {n_sup}건 포함)"
+        elif n_sup:
+            suffix = " (감독자 현장 확인)"
+        else:
+            suffix = ""
         work = ", ".join(stage1.get("work_types") or [])
         render_html(
-            f'<div class="sv-verdict bad"><div class="t">⚠️ 안전수칙 위반 {len(findings)}건</div>'
+            f'<div class="sv-verdict bad"><div class="t">⚠️ 안전수칙 위반 {len(findings)}건{suffix}</div>'
             f'<div class="d">{esc(work + " · " if work else "")}{esc(result["stage2"].get("observations", ""))}</div></div>'
             + "".join(finding_card_html(f) for f in findings)
         )
         with st.expander("📋 조치 요청 문구 복사"):
             st.code(request_message(result), language=None, wrap_lines=True)
-        render_unverifiable(result["unverifiable"])
+        selections = render_unverifiable(result, widget_key, can_add)
 
     timings = result["timings"]
-    if not timings:
-        return
-    detail = " · ".join(f"{k} {v:.1f}초" for k, v in timings.items())
-    st.caption(f"판독 시간 {sum(timings.values()):.1f}초 ({detail})")
+    if timings:
+        detail = " · ".join(f"{k} {v:.1f}초" for k, v in timings.items())
+        st.caption(f"판독 시간 {sum(timings.values()):.1f}초 ({detail})")
+    return selections
 
 
 def friendly_error(exc: Exception) -> str:
@@ -386,7 +430,19 @@ elif clicked:
 
 saved = st.session_state.get("result")
 if saved and saved["key"] == result_key:
-    render_result(saved["data"])
+    can_add = bool(api_key and model) and not saved["data"].get("demo")
+    selections = render_result(saved["data"], result_key[:10], can_add)
+    if selections:
+        client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
+        cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
+        with st.status("선택한 항목의 조문 대조 및 조치사항 작성 중…", expanded=False) as status:
+            try:
+                add_supervisor_findings(client, cfg, saved["data"], selections)
+            except Exception as exc:  # noqa: BLE001
+                status.update(label="추가 실패", state="error")
+                st.error(friendly_error(exc))
+                st.stop()
+        st.rerun()  # 추가된 위험요인 카드를 포함해 결과를 다시 그린다.
 
 render_html(
     '<div class="sv-foot">AI 판독은 감독 업무를 돕는 보조 수단입니다. 사진에 찍히지 않은 상황은 반영되지 않으므로 '

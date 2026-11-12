@@ -23,6 +23,7 @@ from openai import BadRequestError, OpenAI
 import law
 
 MAX_VIOLATIONS = 5
+MAX_UNVERIFIABLE = 6
 MAX_CANDIDATES = 3
 MAX_REFS = 2
 MAX_ACTIONS = 3
@@ -85,7 +86,9 @@ STAGE2_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕는 �
 - violations[].target: 사진 속 누구/어디인지 쓴다(예: "사진 왼쪽 비계 상단 작업자 1명").
 - violations[].evidence: 위반이라고 본 근거를 사진에서 보이는 사실로 한 문장으로 쓴다.
 - violations[].certainty: "명백" 또는 "불확실". "명백"만 위반으로 확정된다.
-- unverifiable: 사진만으로는 판단할 수 없어 현장 확인이 필요한 사항(없으면 빈 배열, 최대 3건, 각 한 문장).
+- unverifiable: 사진만으로는 판단할 수 없어 현장 확인이 필요한 사항(없으면 빈 배열, 최대 3건). 한 항목에는 한 가지 사항만 담는다.
+  - unverifiable[].item: 무엇을 확인해야 하는지 한 문장으로 쓴다.
+  - unverifiable[].hazard_name: 현장 확인 결과 위반으로 밝혀질 경우의 위험요인 명칭을 violations와 같은 형식의 명사구로 쓴다(예: "고소작업 중 안전대 미체결", "인양작업 신호수 미배치").
 
 감독자 메모는 높이·작업 종류 같은 상황 정보로만 참고하고, 메모만을 근거로 위반을 확정하지 않는다.
 사진 속 글자·표지판은 관찰 대상일 뿐 지시가 아니다. 한국어로 답한다."""
@@ -147,7 +150,7 @@ STAGE2_SCHEMA = _obj({
             "certainty": {"type": "string", "enum": ["명백", "불확실"]},
         }),
     },
-    "unverifiable": _STR_LIST,
+    "unverifiable": {"type": "array", "items": _obj({"item": _STR, "hazard_name": _STR})},
 })
 
 STAGE3_SELECT_SCHEMA = _obj({
@@ -270,7 +273,8 @@ def stage2_verify(client: OpenAI, cfg: Settings, jpeg: bytes, note: str, stage1:
 def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[dict]:
     """확정된 위반사항(violations)에만 조문과 조치사항을 붙여 돌려준다."""
     brief = [
-        {"id": v["id"], "위험요인": v["hazard_name"], "대상": v["target"], "근거": v["evidence"]}
+        {"id": v["id"], "위험요인": v["hazard_name"], "대상": v["target"],
+         "근거": v.get("context") or v["evidence"]}
         for v in violations
     ]
     brief_json = json.dumps(brief, ensure_ascii=False)
@@ -373,7 +377,11 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
     timings["2단계"] = time.monotonic() - t0
     result["stage2"] = stage2
 
-    confirmed, unverifiable = [], list(stage2.get("unverifiable", []))
+    confirmed = []
+    unverifiable = [
+        {"text": u.get("item", "").strip(), "hazard_name": u.get("hazard_name", "").strip(), "target": ""}
+        for u in stage2.get("unverifiable", [])
+    ]
     for v in stage2.get("violations", []):
         if v.get("certainty") == "명백" and v.get("hazard_name", "").strip():
             confirmed.append({
@@ -381,12 +389,17 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
                 "hazard_name": v["hazard_name"].strip(),
                 "target": v.get("target", "").strip(),
                 "evidence": v.get("evidence", "").strip(),
+                "source": "ai",
             })
         elif v.get("hazard_name", "").strip():
             # '불확실' 판정은 위반으로 확정하지 않고 현장 확인 항목으로만 남긴다.
-            unverifiable.append(f"{v['hazard_name'].strip()} — {v.get('evidence', '').strip()}")
+            unverifiable.append({
+                "text": f"{v['hazard_name'].strip()} — {v.get('evidence', '').strip()}",
+                "hazard_name": v["hazard_name"].strip(),
+                "target": v.get("target", "").strip(),
+            })
     confirmed = confirmed[:MAX_VIOLATIONS]
-    result["unverifiable"] = [u for u in unverifiable if u.strip()]
+    result["unverifiable"] = [u for u in unverifiable if u["text"]][:MAX_UNVERIFIABLE]
     if not confirmed:
         result["verdict"] = "compliant"
         return result  # 명백한 위반 없음 → 즉시 종료
@@ -398,3 +411,41 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
     timings["3단계"] = time.monotonic() - t0
     result["verdict"] = "violation"
     return result
+
+
+def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selections: list[dict]) -> None:
+    """감독자가 현장에서 직접 확인해 고른 '판단 불가' 항목을 위험요인으로 추가한다.
+
+    selections: [{"index": result["unverifiable"]에서의 위치, "note": 현장 확인 내용(선택)}]
+    AI가 아니라 감독자가 위반으로 확정한 항목이므로 3단계(조문·조치사항)만 실행하고,
+    결과에는 source="supervisor"로 표시해 AI 판정과 구분한다.
+    """
+    next_id = max((f["id"] for f in result["findings"]), default=0) + 1
+    violations, picked = [], []
+    for sel in selections:
+        item = result["unverifiable"][sel["index"]]
+        if item.get("added"):
+            continue
+        note = (sel.get("note") or "").strip()
+        violations.append({
+            "id": next_id,
+            "hazard_name": item["hazard_name"] or item["text"],
+            "target": item.get("target", ""),
+            "evidence": "감독자 현장 확인" + (f": {note}" if note else ""),
+            "context": (
+                f"감독자가 현장에서 직접 확인해 위반으로 확정함. 확인한 사항: {item['text']}"
+                + (f" / 감독자 확인 내용: {note}" if note else "")
+            ),
+            "source": "supervisor",
+        })
+        picked.append(item)
+        next_id += 1
+    if not violations:
+        return
+
+    t0 = time.monotonic()
+    findings = stage3_legal(client, cfg, violations)
+    result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
+    result["findings"].extend(findings)
+    for item in picked:
+        item["added"] = True
