@@ -40,7 +40,7 @@ DEFAULT_MODEL = "gpt-5.6-terra"
 IMAGE_SIZES = {"표준 (1600px · 권장)": 1600, "고화질 (2048px · 느림)": 2048, "절약 (1024px · 빠름)": 1024}
 THUMB_SIDE = 512     # 1단계(작업 사진 여부)용 저해상도
 JPEG_QUALITY = 82
-UPLOAD_TYPES = ["jpg", "jpeg", "png", "webp", "heic", "heif"]
+UPLOAD_TYPES = ["jpg", "jpeg", "jfif", "png", "webp", "heic", "heif", "bmp", "gif", "tif", "tiff"]
 
 st.set_page_config(
     page_title="현장 안전 판독",
