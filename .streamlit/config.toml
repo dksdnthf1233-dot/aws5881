@@ -1,0 +1,9 @@
+[theme]
+base = "light"
+primaryColor = "#d92d20"
+
+[server]
+maxUploadSize = 30
+
+[browser]
+gatherUsageStats = false
