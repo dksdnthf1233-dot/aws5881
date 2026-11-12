@@ -27,6 +27,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 import law
 from analyzer import AnalysisError, Settings, analyze
+from demo import DEMO_KINDS, demo_result
 
 try:  # 아이폰 HEIC 사진 지원(설치돼 있을 때만)
     from pillow_heif import register_heif_opener
@@ -251,6 +252,8 @@ def render_unverifiable(items: list[str]) -> None:
 
 def render_result(result: dict) -> None:
     verdict, stage1 = result["verdict"], result["stage1"]
+    if result.get("demo"):
+        st.warning("🧪 데모 결과입니다. 올린 사진을 판독한 것이 아니라 화면 확인용 고정 예시입니다.")
     render_html(steps_html(result))
 
     if verdict == "not_work":
@@ -277,6 +280,8 @@ def render_result(result: dict) -> None:
         render_unverifiable(result["unverifiable"])
 
     timings = result["timings"]
+    if not timings:
+        return
     detail = " · ".join(f"{k} {v:.1f}초" for k, v in timings.items())
     st.caption(f"판독 시간 {sum(timings.values()):.1f}초 ({detail})")
 
@@ -321,9 +326,12 @@ with st.sidebar:
 st.title("🦺 현장 안전 판독")
 st.caption("작업 사진을 올리면 산업안전보건기준에 관한 규칙 위반 여부·조문·즉시 조치를 알려드립니다.")
 
+demo_kind = ""
 if not api_key:
     st.warning("OpenAI API 키가 설정되지 않았습니다. 아래에 입력하거나 secrets에 `OPENAI_API_KEY`를 등록해 주세요.")
     api_key = st.text_input("OpenAI API 키", type="password", key="api_key_main")
+    if not api_key and st.toggle("🧪 데모 모드 — 키 없이 화면만 체험 (실제 판독 아님)"):
+        demo_kind = DEMO_KINDS[st.selectbox("보여 줄 예시 결과", list(DEMO_KINDS))]
 
 source = st.segmented_control(
     "사진 입력 방법", ["🖼️ 사진 선택", "📷 바로 촬영"], default="🖼️ 사진 선택", label_visibility="collapsed"
@@ -354,11 +362,13 @@ note = st.text_input(
     help="사진만으로 알기 어려운 높이·작업 종류 등을 적으면 판독이 정확해집니다.",
 )
 
-result_key = hashlib.sha256(jpeg + note.encode() + model.encode()).hexdigest()
-clicked = st.button("🔍 안전 판독 시작", type="primary", width="stretch", disabled=not (api_key and model))
+result_key = hashlib.sha256(jpeg + note.encode() + model.encode() + demo_kind.encode()).hexdigest()
+clicked = st.button("🔍 안전 판독 시작", type="primary", width="stretch", disabled=not ((api_key and model) or demo_kind))
 
-if clicked:
-    client = OpenAI(api_key=api_key, timeout=120, max_retries=1)
+if clicked and demo_kind:
+    st.session_state["result"] = {"key": result_key, "data": demo_result(demo_kind)}
+elif clicked:
+    client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
     cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
     with st.status("판독 준비 중…", expanded=False) as status:
         try:
