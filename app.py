@@ -85,9 +85,6 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-card {border: 1px solid #e1e4e8; border-left: 6px solid #d92d20; border-radius: 12px; background: #fff;
           padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
-.sv-sev {display: inline-block; font-size: 0.72rem; font-weight: 800; border-radius: 6px; padding: 1px 7px; margin-left: 6px;
-         vertical-align: middle; border: 1px solid currentColor;}
-.sv-sev.s1 {color: #c81e14; background: #fdebea;} .sv-sev.s2 {color: #b54708; background: #fff4dd;} .sv-sev.s3 {color: #0f6e32; background: #e6f6ec;}
 .sv-card.sup {border-left-color: #b54708;}
 .sv-card.sup .no {color: #b54708;}
 .sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
@@ -212,16 +209,11 @@ def steps_html(result: dict) -> str:
     return f'<div class="sv-steps">{chips}</div>'
 
 
-def severity_badge(severity: str) -> str:
-    cls = {"상": "s1", "중": "s2", "하": "s3"}.get(severity)
-    return f'<span class="sv-sev {cls}">위험도 {severity}</span>' if cls else ""
-
-
 def finding_card_html(f: dict) -> str:
     by_supervisor = f.get("source") == "supervisor"
     parts = [
         f'<div class="no">위험요인 {f["id"]}{" · 감독자 현장 확인으로 추가" if by_supervisor else ""}</div>',
-        f'<div class="name">{esc(f["hazard_name"])}{severity_badge(f.get("severity", ""))}</div>',
+        f'<div class="name">{esc(f["hazard_name"])}</div>',
         f'<div class="ev">{esc(" · ".join(x for x in (f["target"], f["evidence"]) if x))}</div>',
         '<div class="sv-sec"><div class="sv-lab">📜 관련 법령 조항</div>',
     ]

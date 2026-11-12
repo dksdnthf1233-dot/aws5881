@@ -53,7 +53,7 @@ def demo_result(verdict: str) -> dict:
                 "evidence": "안전대를 착용했으나 죔줄 고리가 어디에도 걸려 있지 않다.",
                 "refs": [law.cite("제44조", 1), law.cite("제32조", 1, ["2"])],
                 "actions": ["해당 고소작업 즉시 중지", "안전대 죔줄을 부착설비에 체결한 뒤 작업 재개"],
-                "kosha_guide": "", "source": "ai", "severity": "상",
+                "kosha_guide": "", "source": "ai",
             },
             {
                 "id": 2, "hazard_name": "안전모 미착용",
@@ -61,7 +61,7 @@ def demo_result(verdict: str) -> dict:
                 "evidence": "안전모 없이 일반 모자만 쓰고 있다.",
                 "refs": [law.cite("제32조", 1, ["1"])],
                 "actions": ["안전모 착용 후 작업구역 출입"],
-                "kosha_guide": "", "source": "ai", "severity": "상",
+                "kosha_guide": "", "source": "ai",
             },
         ]
     return result
