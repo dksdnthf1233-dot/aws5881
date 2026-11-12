@@ -30,8 +30,7 @@ MAX_LAW_CHARS = 480        # 표가 한 쪽을 넘지 않도록 조문 인용 �
 WEEKDAYS = "월화수목금토일"
 
 BLACK, GRAY, LIGHT = (27, 31, 36), (87, 96, 106), (243, 244, 246)
-RED, ORANGE, GREEN, BLUE = (200, 30, 20), (181, 71, 8), (15, 110, 50), (11, 74, 143)
-SEVERITY_COLOR = {"상": RED, "중": ORANGE, "하": GREEN}
+RED = (200, 30, 20)
 
 _HANJA_NOTE_RE = re.compile(r"\([^()가-힣]*[㐀-鿿豈-﫿][^()가-힣]*\)")
 
@@ -50,17 +49,6 @@ def _clean(text: str, markdown: bool = False) -> str:
         for mark, safe in (("**", "＊＊"), ("__", "＿＿"), ("--", "－－"), ("~~", "～～")):
             text = text.replace(mark, safe)
     return text.strip()
-
-
-def overall_risk(findings: list[dict]) -> tuple[str, tuple[int, int, int]]:
-    levels = {f.get("severity") for f in findings}
-    if "상" in levels:
-        return "위험 (높음)", RED
-    if "중" in levels:
-        return "주의 (보통)", ORANGE
-    if "하" in levels:
-        return "관심 (낮음)", GREEN
-    return "위반 확인", RED
 
 
 def format_datetime(dt: datetime) -> str:
@@ -88,7 +76,6 @@ class _Report(FPDF):
 def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
                      place: str = "", work: str = "", inspector: str = "") -> bytes:
     findings = result["findings"]
-    risk_label, risk_color = overall_risk(findings)
     date_text = format_datetime(checked_at)
 
     pdf = _Report(format="A4", unit="mm")
@@ -130,13 +117,11 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
         row = table.row()
         row.cell("점검 일시", style=label)
         row.cell(date_text, style=plain)
-        row.cell("종합 위험도", style=label)
-        row.cell(risk_label, style=FontFace(emphasis="B", color=risk_color))
-        row = table.row()
-        row.cell("작업 장소", style=label)
-        row.cell(_clean(place) or "-", style=plain)
         row.cell("점검자", style=label)
         row.cell(_clean(inspector) or "-", style=plain)
+        row = table.row()
+        row.cell("작업 장소", style=label)
+        row.cell(_clean(place) or "-", style=plain, colspan=3)
         row = table.row()
         row.cell("작업 내용 및 공종", style=label)
         row.cell(_clean(work) or "-", style=plain, colspan=3)
@@ -155,18 +140,12 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
 
     # ---- 총평 ----
     heading("현장 총평 및 종합 소견")
-    counts = {lv: sum(1 for f in findings if f.get("severity") == lv) for lv in ("상", "중", "하")}
-    count_text = " · ".join(f"{lv} {n}건" for lv, n in counts.items() if n)
     summary = (
         f"「{law.LAW_NAME}」에 따라 현장 작업 사진을 점검한 결과 안전수칙 위반 **{len(findings)}건**"
-        + (f"(위험도 {count_text})" if count_text else "")
-        + "이 확인되어 아래와 같이 즉시 개선을 요청합니다."
+        "이 확인되어 아래와 같이 즉시 개선을 요청합니다."
     )
     observations = _clean((result.get("stage2") or {}).get("observations", ""), markdown=True)
-    demands = []
-    if counts["상"]:
-        demands.append("위험도 '상' 항목과 관련된 작업은 안전조치를 마칠 때까지 즉시 중지할 것")
-    demands += [
+    demands = [
         "아래 항목별 조치 사항을 즉시 이행하고 그 결과를 점검자에게 통보할 것",
         "작업 전 안전점검회의(TBM)에서 본 지적 사항을 모든 작업자에게 공유할 것",
     ]
@@ -185,10 +164,10 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
     def draw_details(doc: FPDF, items: list[dict]) -> None:
         heading(f"식별된 위험 요인 및 법령·대책 세부 내역 ({len(findings)}건)", RED, doc)
         doc.set_font("Nanum", "", 8.2)
-        with doc.table(col_widths=(8, 36, 12, 86, 44), line_height=4.3, text_align="LEFT",
+        with doc.table(col_widths=(8, 38, 94, 46), line_height=4.3, text_align="LEFT",
                        padding=1.5, markdown=True, headings_style=head) as table:
             row = table.row()
-            for title in ("No.", "위반 항목", "위험도", "관련 법령", "조치 요지"):
+            for title in ("No.", "위반 항목", "관련 법령", "조치 요지"):
                 row.cell(title, align="C")
             for no, f in enumerate(items, 1):
                 draw_row(table, no, f)
@@ -199,15 +178,12 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
             item += f"\n위치: {_clean(f['target'], markdown=True)}"
         if f.get("source") == "supervisor":
             item += "\n(감독자 현장 확인)"
-        severity = f.get("severity") or "-"
         actions = "\n".join(
             f"{i}. {_clean(a, markdown=True)}" for i, a in enumerate(f.get("actions", []), 1)
         ) or "-"
         row = table.row()
         row.cell(str(no), align="C")
         row.cell(item)
-        row.cell(severity, align="C",
-                 style=FontFace(emphasis="B", color=SEVERITY_COLOR.get(severity, BLACK)))
         row.cell(_law_cell(f))
         row.cell(actions)
 
@@ -224,8 +200,7 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
     pdf.set_text_color(*GRAY)
     pdf.multi_cell(
         0, 4,
-        f"※ 법령 출처: {law.LAW_NAME} (시행 {law.meta().get('시행일자', '')}) · 국가법령정보센터 www.law.go.kr\n"
-        "※ 조문은 해당 항·호만 발췌했으며 한자 병기는 생략했습니다.",
+        f"※ 법령 출처: {law.LAW_NAME} (시행 {law.meta().get('시행일자', '')}) · 국가법령정보센터 www.law.go.kr",
         new_x=XPos.LMARGIN, new_y=YPos.NEXT,
     )
     pdf.set_text_color(*BLACK)
