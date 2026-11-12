@@ -112,7 +112,8 @@ STAGE3_FINAL_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕
 3. refs[].paragraph: 적용되는 항 번호(원문에 "제1항"처럼 표시된 번호). 항 표시가 없는 조문이면 0.
 4. refs[].ho: 그 항에서 적용되는 호 번호 목록(예: ["1"], ["2", "5의2"]). 특정 호가 아니라 항 전체가 적용되면 빈 배열.
 5. actions: 현장대리인·현장소장에게 즉시 요구할 조치 1~3개. 각각 40자 이내의 한 문장으로, 가장 먼저 할 일부터 쓴다(예: "해당 작업 즉시 중지", "안전대를 부착설비에 체결한 뒤 작업 재개").
-6. kosha_guide: 직접 관련된 KOSHA Guide의 지침명을 확실히 아는 경우에만 적는다(지침번호는 확실할 때만 함께 적는다). 조금이라도 불확실하면 빈 문자열로 둔다.
+6. severity: 이 위반을 방치했을 때 예상되는 재해의 크기. "상" = 사망 또는 중대한 부상으로 이어질 수 있음(추락, 감전, 끼임·깔림, 낙하물 맞음, 화재·폭발, 질식 등), "중" = 치료가 필요한 부상 가능, "하" = 경미한 부상 또는 관리상 미비.
+7. kosha_guide: 직접 관련된 KOSHA Guide의 지침명을 확실히 아는 경우에만 적는다(지침번호는 확실할 때만 함께 적는다). 조금이라도 불확실하면 빈 문자열로 둔다.
 한국어로 답한다."""
 
 
@@ -174,6 +175,7 @@ STAGE3_FINAL_SCHEMA = _obj({
                 }),
             },
             "actions": _STR_LIST,
+            "severity": {"type": "string", "enum": ["상", "중", "하"]},
             "kosha_guide": _STR,
         }),
     },
@@ -338,6 +340,7 @@ def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[
             **v,
             "refs": refs[:MAX_REFS],
             "actions": actions[:MAX_ACTIONS],
+            "severity": item.get("severity") if item.get("severity") in ("상", "중", "하") else "",
             "kosha_guide": (item.get("kosha_guide") or "").strip(),
         })
     return findings

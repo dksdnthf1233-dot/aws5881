@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import html
 import io
+import json
 import os
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -28,6 +29,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 import law
 from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze
 from demo import DEMO_KINDS, demo_result
+from report import build_report_pdf
 
 try:  # 아이폰 HEIC 사진 지원(설치돼 있을 때만)
     from pillow_heif import register_heif_opener
@@ -40,6 +42,7 @@ DEFAULT_MODEL = "gpt-5.6-terra"
 IMAGE_SIZES = {"표준 (1600px · 권장)": 1600, "고화질 (2048px · 느림)": 2048, "절약 (1024px · 빠름)": 1024}
 THUMB_SIDE = 512     # 1단계(작업 사진 여부)용 저해상도
 JPEG_QUALITY = 82
+KST = ZoneInfo("Asia/Seoul")
 UPLOAD_TYPES = ["jpg", "jpeg", "jfif", "png", "webp", "heic", "heif", "bmp", "gif", "tif", "tiff"]
 
 st.set_page_config(
@@ -82,6 +85,9 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-card {border: 1px solid #e1e4e8; border-left: 6px solid #d92d20; border-radius: 12px; background: #fff;
           padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
+.sv-sev {display: inline-block; font-size: 0.72rem; font-weight: 800; border-radius: 6px; padding: 1px 7px; margin-left: 6px;
+         vertical-align: middle; border: 1px solid currentColor;}
+.sv-sev.s1 {color: #c81e14; background: #fdebea;} .sv-sev.s2 {color: #b54708; background: #fff4dd;} .sv-sev.s3 {color: #0f6e32; background: #e6f6ec;}
 .sv-card.sup {border-left-color: #b54708;}
 .sv-card.sup .no {color: #b54708;}
 .sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
@@ -206,11 +212,16 @@ def steps_html(result: dict) -> str:
     return f'<div class="sv-steps">{chips}</div>'
 
 
+def severity_badge(severity: str) -> str:
+    cls = {"상": "s1", "중": "s2", "하": "s3"}.get(severity)
+    return f'<span class="sv-sev {cls}">위험도 {severity}</span>' if cls else ""
+
+
 def finding_card_html(f: dict) -> str:
     by_supervisor = f.get("source") == "supervisor"
     parts = [
         f'<div class="no">위험요인 {f["id"]}{" · 감독자 현장 확인으로 추가" if by_supervisor else ""}</div>',
-        f'<div class="name">{esc(f["hazard_name"])}</div>',
+        f'<div class="name">{esc(f["hazard_name"])}{severity_badge(f.get("severity", ""))}</div>',
         f'<div class="ev">{esc(" · ".join(x for x in (f["target"], f["evidence"]) if x))}</div>',
         '<div class="sv-sec"><div class="sv-lab">📜 관련 법령 조항</div>',
     ]
@@ -245,7 +256,7 @@ def finding_card_html(f: dict) -> str:
 
 def request_message(result: dict) -> str:
     """현장대리인·현장소장에게 보낼 조치 요청 문구."""
-    now = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
+    now = datetime.now(KST).strftime("%Y-%m-%d %H:%M")
     lines = [f"[안전조치 요청] {now}", f"안전수칙 위반 {len(result['findings'])}건 확인, 즉시 조치 바랍니다.", ""]
     for f in result["findings"]:
         where = f" ({f['target']})" if f["target"] else ""
@@ -256,6 +267,45 @@ def request_message(result: dict) -> str:
             lines.append(f" - 조치{i}: {action}")
         lines.append("")
     return "\n".join(lines).strip()
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def report_pdf(findings_json: str, observations: str, jpeg: bytes, checked_at: str,
+               place: str, work: str, inspector: str) -> bytes:
+    """같은 내용이면 다시 만들지 않도록 캐시한 요청서 PDF."""
+    result = {"findings": json.loads(findings_json), "stage2": {"observations": observations}}
+    return build_report_pdf(result, jpeg, datetime.fromisoformat(checked_at), place, work, inspector)
+
+
+def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
+    """현장대리인·현장소장에게 보내거나 출력할 '개선 요청서' PDF."""
+    with st.expander("📄 개선 요청서 PDF (전송·출력용)"):
+        place = st.text_input("작업 장소", key="report_place", max_chars=60, placeholder="예: 보일러동 3층 철골 작업구역")
+        work = st.text_input(
+            "작업 내용 및 공종", key=f"report_work_{widget_key}", max_chars=80,
+            value=", ".join(result["stage1"].get("work_types") or []),
+        )
+        if "report_inspector" not in st.session_state:
+            st.session_state["report_inspector"] = secret("REPORT_INSPECTOR")
+        inspector = st.text_input("점검자 (선택)", key="report_inspector", max_chars=30)
+
+        checked_at = result.get("checked_at") or datetime.now(KST).isoformat(timespec="minutes")
+        try:
+            pdf = report_pdf(
+                json.dumps(result["findings"], ensure_ascii=False, sort_keys=True),
+                (result.get("stage2") or {}).get("observations", ""),
+                jpeg, checked_at, place, work, inspector,
+            )
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"요청서를 만들지 못했습니다: {exc}")
+            return
+        stamp = datetime.fromisoformat(checked_at).strftime("%Y%m%d_%H%M")
+        st.download_button(
+            "⬇️ 개선 요청서 PDF 받기", data=pdf, file_name=f"safety_report_{stamp}.pdf",
+            mime="application/pdf", type="primary", width="stretch", on_click="ignore",
+            key=f"report_dl_{widget_key}",
+        )
+        st.caption("받은 PDF는 카카오톡·메일로 보내거나 인쇄할 수 있습니다. 감독자가 추가한 위험요인도 함께 들어갑니다.")
 
 
 def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[dict]:
@@ -286,7 +336,7 @@ def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[di
     return selections if clicked else []
 
 
-def render_result(result: dict, widget_key: str, can_add: bool) -> list[dict]:
+def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> list[dict]:
     """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다."""
     verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
@@ -321,6 +371,7 @@ def render_result(result: dict, widget_key: str, can_add: bool) -> list[dict]:
         )
         with st.expander("📋 조치 요청 문구 복사"):
             st.code(request_message(result), language=None, wrap_lines=True)
+        render_report(result, jpeg, widget_key)
         selections = render_unverifiable(result, widget_key, can_add)
 
     timings = result["timings"]
@@ -410,7 +461,9 @@ result_key = hashlib.sha256(jpeg + note.encode() + model.encode() + demo_kind.en
 clicked = st.button("🔍 안전 판독 시작", type="primary", width="stretch", disabled=not ((api_key and model) or demo_kind))
 
 if clicked and demo_kind:
-    st.session_state["result"] = {"key": result_key, "data": demo_result(demo_kind)}
+    demo = demo_result(demo_kind)
+    demo["checked_at"] = datetime.now(KST).isoformat(timespec="minutes")
+    st.session_state["result"] = {"key": result_key, "data": demo}
 elif clicked:
     client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
     cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
@@ -426,12 +479,13 @@ elif clicked:
             st.error(friendly_error(exc))
             st.stop()
         status.update(label="판독 완료", state="complete")
+    result["checked_at"] = datetime.now(KST).isoformat(timespec="minutes")
     st.session_state["result"] = {"key": result_key, "data": result}
 
 saved = st.session_state.get("result")
 if saved and saved["key"] == result_key:
     can_add = bool(api_key and model) and not saved["data"].get("demo")
-    selections = render_result(saved["data"], result_key[:10], can_add)
+    selections = render_result(saved["data"], jpeg, result_key[:10], can_add)
     if selections:
         client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
         cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
