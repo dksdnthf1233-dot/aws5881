@@ -5,7 +5,6 @@
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import html
@@ -27,9 +26,6 @@ from openai import (
 )
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from streamlit_image_coordinates import streamlit_image_coordinates
-
-import annotate
 import law
 from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze
 from demo import DEMO_KINDS, demo_result
@@ -89,15 +85,6 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-card {border: 1px solid #e1e4e8; border-left: 6px solid #d92d20; border-radius: 12px; background: #fff;
           padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
-.sv-card {scroll-margin-top: 4.5rem;}
-.sv-card:target {box-shadow: 0 0 0 4px #f79009; animation: sv-flash 1.4s ease-out;}
-@keyframes sv-flash {from {background: #ffe9c2;} to {background: #fff;}}
-.sv-card .no a {color: #0b4a8f; font-weight: 600; text-decoration: none; margin-left: 6px;}
-.sv-photo {text-align: center; scroll-margin-top: 4.5rem;}
-.sv-photo .in {position: relative; display: inline-block; max-width: 100%; line-height: 0;}
-.sv-photo img {display: block; max-width: 100%; max-height: 56vh; width: auto; height: auto; border-radius: 10px;}
-.sv-photo a {position: absolute; display: block; border-radius: 6px; max-width: none; -webkit-tap-highlight-color: rgba(255,255,255,.35);}
-.sv-photo a.pin {border-radius: 50%; min-width: 44px; min-height: 44px; transform: translate(-50%, -50%); z-index: 2;}
 .sv-card.sup {border-left-color: #b54708;}
 .sv-card.sup .no {color: #b54708;}
 .sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
@@ -224,9 +211,8 @@ def steps_html(result: dict) -> str:
 
 def finding_card_html(f: dict) -> str:
     by_supervisor = f.get("source") == "supervisor"
-    photo_link = '<a href="#sv-photo">📍 사진에서 보기</a>' if annotate.marker_of(f) else ""
     parts = [
-        f'<div class="no">위험요인 {f["id"]}{" · 감독자 현장 확인으로 추가" if by_supervisor else ""}{photo_link}</div>',
+        f'<div class="no">위험요인 {f["id"]}{" · 감독자 현장 확인으로 추가" if by_supervisor else ""}</div>',
         f'<div class="name">{esc(f["hazard_name"])}</div>',
         f'<div class="ev">{esc(" · ".join(x for x in (f["target"], f["evidence"]) if x))}</div>',
         '<div class="sv-sec"><div class="sv-lab">📜 관련 법령 조항</div>',
@@ -257,7 +243,7 @@ def finding_card_html(f: dict) -> str:
             f'<div class="sv-ref">{esc(f["kosha_guide"])}<br>'
             "<small>AI가 기억으로 제시한 지침명입니다. 번호·내용은 KOSHA 누리집에서 확인하세요.</small></div></div>"
         )
-    return f'<div class="sv-card{" sup" if by_supervisor else ""}" id="sv-f{f["id"]}">{"".join(parts)}</div>'
+    return f'<div class="sv-card{" sup" if by_supervisor else ""}">{"".join(parts)}</div>'
 
 
 def request_message(result: dict) -> str:
@@ -273,87 +259,6 @@ def request_message(result: dict) -> str:
             lines.append(f" - 조치{i}: {action}")
         lines.append("")
     return "\n".join(lines).strip()
-
-
-@st.cache_data(show_spinner=False, max_entries=8)
-def marked_photo(jpeg: bytes, markers_json: str) -> tuple[bytes, int, int]:
-    """위험요인 위치를 그려 넣은 사진과 그 크기. 화면과 PDF가 같은 그림을 쓴다."""
-    marked = annotate.render(jpeg, json.loads(markers_json))
-    with Image.open(io.BytesIO(marked)) as img:
-        return marked, img.width, img.height
-
-
-@st.cache_data(show_spinner=False, max_entries=8)
-def tap_image(marked: bytes) -> Image.Image:
-    """위치 지정용으로 줄인 사진(전송량을 줄이기 위해 긴 변 1000px)."""
-    img = Image.open(io.BytesIO(marked)).convert("RGB")
-    img.thumbnail((1000, 1000), Image.Resampling.LANCZOS)
-    return img
-
-
-def photo_html(marked: bytes, width: int, height: int, markers: list[dict]) -> str:
-    """표시된 사진 + 번호 핀을 누르면 해당 위험요인 카드로 이동하는 투명 터치 영역."""
-    rx, ry = annotate.pin_radius_ratio(width, height)
-    spots = []
-    for m in markers:
-        label = f'aria-label="위험요인 {m["id"]}로 이동"'
-        if m["box"]:
-            x1, y1, x2, y2 = m["box"]
-            spots.append(
-                f'<a href="#sv-f{m["id"]}" {label} style="left:{x1 * 100:.2f}%;top:{y1 * 100:.2f}%;'
-                f'width:{(x2 - x1) * 100:.2f}%;height:{(y2 - y1) * 100:.2f}%"></a>'
-            )
-        cx = min(max(m["anchor"][0], rx), 1 - rx)
-        cy = min(max(m["anchor"][1], ry), 1 - ry)
-        spots.append(
-            f'<a class="pin" href="#sv-f{m["id"]}" {label} style="left:{cx * 100:.2f}%;top:{cy * 100:.2f}%;'
-            f'width:{rx * 200:.2f}%;height:{ry * 200:.2f}%"></a>'
-        )
-    src = "data:image/jpeg;base64," + base64.b64encode(marked).decode("ascii")
-    return (
-        '<div class="sv-photo" id="sv-photo"><div class="in">'
-        f'<img src="{src}" alt="위험요인 위치가 표시된 현장 사진">{"".join(spots)}</div></div>'
-    )
-
-
-def render_pin_tool(result: dict, marked: bytes, widget_key: str) -> None:
-    """사진을 눌러 위험요인 위치를 직접 찍거나, AI가 표시한 위치를 고친다."""
-    findings = result["findings"]
-    unmarked = [f["id"] for f in findings if not annotate.marker_of(f)]
-    names = {f["id"]: f"{f['id']}. {f['hazard_name']}" for f in findings}
-    select_key = f"pin_sel_{widget_key}"
-    requested = st.session_state.pop(f"pin_next_{widget_key}", None)  # 방금 추가한 항목을 먼저 고르게 한다
-    if requested in names:
-        st.session_state[select_key] = requested
-    if st.session_state.get(select_key) not in names:
-        st.session_state[select_key] = unmarked[0] if unmarked else findings[0]["id"]
-
-    # 표시가 없는 항목이 있으면 펼쳐 두고, 핀을 다 찍은 뒤에도 바로 접히지 않게 한다(옮기거나 지울 수 있도록).
-    open_key = f"pin_open_{widget_key}"
-    if unmarked:
-        st.session_state[open_key] = True
-    title = "📍 사진에 위치 표시·수정" + (f" · 미표시 {len(unmarked)}건" if unmarked else "")
-    with st.expander(title, expanded=st.session_state.get(open_key, False)):
-        # 선택지 글자가 바뀌면 선택이 첫 항목으로 초기화되므로, 표시 여부는 선택지에 넣지 않고 따로 알린다.
-        chosen = st.selectbox("위치를 표시할 위험요인", list(names), key=select_key, format_func=names.get)
-        if unmarked:
-            st.caption("아직 표시가 없는 항목: " + ", ".join(f"{i}번" for i in unmarked))
-        target = next(f for f in findings if f["id"] == chosen)
-        st.caption("아래 사진에서 해당 위치를 누르면 번호 핀이 찍힙니다. 다시 누르면 옮겨집니다.")
-        click = streamlit_image_coordinates(
-            tap_image(marked), key=f"pin_{widget_key}_{chosen}", use_column_width="always",
-            image_format="JPEG", jpeg_quality=80, cursor="crosshair",
-        )
-        # 부품은 마지막으로 누른 위치를 계속 돌려주므로, 새로 누른 경우에만 반영한다.
-        if click and click.get("width") and click.get("height") and click.get("unix_time") != target.get("pin_time"):
-            target["pin"] = [round(click["x"] / click["width"], 4), round(click["y"] / click["height"], 4)]
-            target["pin_time"] = click.get("unix_time")
-            st.rerun()
-        if target.get("pin"):
-            undo = "직접 찍은 핀 지우기" + (" (AI 표시로 되돌리기)" if target.get("box") else "")
-            if st.button(undo, key=f"pin_clear_{widget_key}_{chosen}", width="stretch"):
-                target["pin"] = None
-                st.rerun()
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
@@ -392,7 +297,7 @@ def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
             mime="application/pdf", type="primary", width="stretch", on_click="ignore",
             key=f"report_dl_{widget_key}",
         )
-        st.caption("받은 PDF는 카카오톡·메일로 보내거나 인쇄할 수 있습니다. 사진의 박스·번호 핀과 감독자가 추가한 위험요인도 함께 들어갑니다.")
+        st.caption("받은 PDF는 카카오톡·메일로 보내거나 인쇄할 수 있습니다. 감독자가 추가한 위험요인도 함께 들어갑니다.")
 
 
 def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[dict]:
@@ -424,10 +329,7 @@ def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[di
 
 
 def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> list[dict]:
-    """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다.
-
-    jpeg는 위험요인 위치가 표시된 사진이다(표시가 없으면 원본).
-    """
+    """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다."""
     verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
         st.warning("🧪 데모 결과입니다. 올린 사진을 판독한 것이 아니라 화면 확인용 고정 예시입니다.")
@@ -459,7 +361,6 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> 
             f'<div class="d">{esc(work + " · " if work else "")}{esc(result["stage2"].get("observations", ""))}</div></div>'
             + "".join(finding_card_html(f) for f in findings)
         )
-        render_pin_tool(result, jpeg, widget_key)
         with st.expander("📋 조치 요청 문구 복사"):
             st.code(request_message(result), language=None, wrap_lines=True)
         render_report(result, jpeg, widget_key)
@@ -537,8 +438,7 @@ except (UnidentifiedImageError, OSError):
     st.error("이미지를 읽을 수 없습니다. JPG·PNG 형식의 사진으로 다시 시도해 주세요.")
     st.stop()
 
-photo_slot = st.empty()  # 판독이 끝나면 위치가 표시된 사진으로 바꿔 끼운다.
-photo_slot.image(jpeg, width="stretch")
+st.image(jpeg, width="stretch")
 st.caption(
     f"전송 크기 {info['sent_px'][0]}×{info['sent_px'][1]} · {info['sent_kb']:.0f}KB "
     f"(원본 {info['original_px'][0]}×{info['original_px'][1]} · {info['original_kb']:.0f}KB)"
@@ -576,30 +476,18 @@ elif clicked:
 
 saved = st.session_state.get("result")
 if saved and saved["key"] == result_key:
-    data = saved["data"]
-    can_add = bool(api_key and model) and not data.get("demo")
-    markers = annotate.markers_of(data["findings"])
-    photo = jpeg
-    if markers:
-        photo, photo_w, photo_h = marked_photo(jpeg, json.dumps(markers))
-        with photo_slot.container():
-            render_html(photo_html(photo, photo_w, photo_h, markers))
-            st.caption("사진의 번호를 누르면 아래 해당 위험요인으로 이동합니다.")
-    selections = render_result(data, photo, result_key[:10], can_add)
+    can_add = bool(api_key and model) and not saved["data"].get("demo")
+    selections = render_result(saved["data"], jpeg, result_key[:10], can_add)
     if selections:
         client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
         cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
         with st.status("선택한 항목의 조문 대조 및 조치사항 작성 중…", expanded=False) as status:
             try:
-                add_supervisor_findings(client, cfg, data, selections)
+                add_supervisor_findings(client, cfg, saved["data"], selections)
             except Exception as exc:  # noqa: BLE001
                 status.update(label="추가 실패", state="error")
                 st.error(friendly_error(exc))
                 st.stop()
-        # 방금 추가한 항목 중 위치 표시가 없는 것을 위치 지정 대상으로 미리 골라 둔다.
-        unmarked = next((f["id"] for f in data["findings"] if not annotate.marker_of(f)), None)
-        if unmarked is not None:
-            st.session_state[f"pin_next_{result_key[:10]}"] = unmarked
         st.rerun()  # 추가된 위험요인 카드를 포함해 결과를 다시 그린다.
 
 render_html(
