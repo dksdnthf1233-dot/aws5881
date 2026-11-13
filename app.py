@@ -109,6 +109,11 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 [data-testid="stFileUploaderDropzoneInstructions"] span {font-size: 0;}
 [data-testid="stFileUploaderDropzoneInstructions"] span::after {
   content: "촬영 또는 갤러리 선택"; font-size: 0.8rem; color: #6b7686;}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
+  content: "카메라 열기";}
+.st-key-camera_upload [data-testid="stFileUploaderDropzoneInstructions"] span::after {
+  content: "가로로 들고 찍으세요";}
+[data-testid="stFileUploaderDropzoneInstructions"] {white-space: normal;}
 [data-testid="stButtonGroup"] button {min-height: 2.7rem; font-weight: 700;}
 
 /* 사진·접이식 영역·입력칸 */
@@ -185,6 +190,25 @@ HERO_HTML = (
     '<div class="tags"><span>3단계 판독</span><span>법령 원문 대조</span><span>즉시 조치</span></div>'
     "</div></div></div>"
 )
+
+# '바로 촬영' 업로드 칸의 파일 입력에 capture 속성을 달아, 누르면 파일 선택 창 대신 후면 카메라가 열리게 한다.
+# 화면이 다시 그려지면 속성이 지워질 수 있어 주기적으로 다시 단다.
+CAMERA_JS = """
+<script>
+(() => {
+  const apply = () => {
+    const input = document.querySelector('.st-key-camera_upload input[type="file"]');
+    if (input && input.getAttribute('capture') !== 'environment') {
+      input.setAttribute('capture', 'environment');
+      input.setAttribute('accept', 'image/*');
+    }
+  };
+  apply();
+  clearInterval(window.__svCameraTimer);
+  window.__svCameraTimer = setInterval(apply, 400);
+})();
+</script>
+"""
 
 GUIDE_HTML = (
     '<div class="sv-wrap"><div class="sv-guide">'
@@ -523,7 +547,10 @@ source = st.segmented_control(
     "사진 입력 방법", ["🖼️ 사진 선택", "📷 바로 촬영"], default="🖼️ 사진 선택", label_visibility="collapsed"
 )
 if source == "📷 바로 촬영":
-    upload = st.camera_input("현장 사진 촬영", label_visibility="collapsed")
+    # 화면 속 미리보기 카메라(세로 고정·저해상도) 대신 휴대폰 기본 카메라 앱을 바로 연다.
+    # 기본 카메라는 휴대폰을 든 방향을 사진에 기록하므로, 가로로 들고 찍으면 가로 사진으로 올라온다.
+    upload = st.file_uploader("현장 사진 촬영", type=UPLOAD_TYPES, label_visibility="collapsed", key="camera_upload")
+    st.html(CAMERA_JS, unsafe_allow_javascript=True)
 else:
     upload = st.file_uploader("현장 사진", type=UPLOAD_TYPES, label_visibility="collapsed")
 
