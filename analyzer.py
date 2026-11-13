@@ -413,39 +413,66 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
     return result
 
 
+def _supervisor_violation(item: dict, violation_id: int, note: str = "", confirmed: bool = True) -> dict:
+    """'판단 불가' 항목을 3단계에 넘길 위반사항 형태로 바꾼다."""
+    if confirmed:
+        context = f"감독자가 현장에서 직접 확인해 위반으로 확정함. 확인한 사항: {item['text']}"
+    else:
+        context = f"사진만으로는 판단할 수 없어 감독자가 현장에서 확인하려는 사항임. 위반으로 확인될 경우를 전제로 함. 확인할 사항: {item['text']}"
+    if note:
+        context += f" / 감독자 확인 내용: {note}"
+    return {
+        "id": violation_id,
+        "hazard_name": item["hazard_name"] or item["text"],
+        "target": item.get("target", ""),
+        "evidence": "감독자 현장 확인" + (f": {note}" if note else ""),
+        "context": context,
+        "source": "supervisor",
+    }
+
+
+def preview_unverifiable(client: OpenAI, cfg: Settings, result: dict, index: int) -> None:
+    """'판단 불가' 항목 하나에 대해, 위반일 경우 적용될 조문·조치사항을 미리 찾아 둔다.
+
+    감독자가 항목을 체크했을 때 호출한다. 결과는 item["preview"]에 저장되어
+    체크박스 아래에 조문으로 표시되고, 위험요인으로 추가할 때 그대로 재사용된다.
+    """
+    item = result["unverifiable"][index]
+    t0 = time.monotonic()
+    finding = stage3_legal(client, cfg, [_supervisor_violation(item, 1, confirmed=False)])[0]
+    result["timings"]["조문 조회"] = result["timings"].get("조문 조회", 0.0) + time.monotonic() - t0
+    item["preview"] = {key: finding[key] for key in ("refs", "actions", "kosha_guide")}
+
+
 def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selections: list[dict]) -> None:
     """감독자가 현장에서 직접 확인해 고른 '판단 불가' 항목을 위험요인으로 추가한다.
 
     selections: [{"index": result["unverifiable"]에서의 위치, "note": 현장 확인 내용(선택)}]
-    AI가 아니라 감독자가 위반으로 확정한 항목이므로 3단계(조문·조치사항)만 실행하고,
+    AI가 아니라 감독자가 위반으로 확정한 항목이므로 3단계(조문·조치사항)만 거치고,
     결과에는 source="supervisor"로 표시해 AI 판정과 구분한다.
+    체크할 때 찾아 둔 조문(preview)이 있고 확인 내용을 따로 적지 않았으면 그것을 그대로 쓴다.
     """
     next_id = max((f["id"] for f in result["findings"]), default=0) + 1
-    violations, picked = [], []
+    ready, todo, picked = [], [], []
     for sel in selections:
         item = result["unverifiable"][sel["index"]]
         if item.get("added"):
             continue
         note = (sel.get("note") or "").strip()
-        violations.append({
-            "id": next_id,
-            "hazard_name": item["hazard_name"] or item["text"],
-            "target": item.get("target", ""),
-            "evidence": "감독자 현장 확인" + (f": {note}" if note else ""),
-            "context": (
-                f"감독자가 현장에서 직접 확인해 위반으로 확정함. 확인한 사항: {item['text']}"
-                + (f" / 감독자 확인 내용: {note}" if note else "")
-            ),
-            "source": "supervisor",
-        })
+        violation = _supervisor_violation(item, next_id, note)
+        if item.get("preview") and not note:
+            ready.append({**violation, **item["preview"]})
+        else:
+            todo.append(violation)  # 확인 내용을 반영해 조문·조치사항을 새로 만든다
         picked.append(item)
         next_id += 1
-    if not violations:
+    if not picked:
         return
 
-    t0 = time.monotonic()
-    findings = stage3_legal(client, cfg, violations)
-    result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
-    result["findings"].extend(findings)
+    if todo:
+        t0 = time.monotonic()
+        ready += stage3_legal(client, cfg, todo)
+        result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
+    result["findings"].extend(sorted(ready, key=lambda f: f["id"]))
     for item in picked:
         item["added"] = True

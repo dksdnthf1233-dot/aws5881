@@ -27,7 +27,7 @@ from openai import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 import law
-from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze
+from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze, preview_unverifiable
 from demo import DEMO_KINDS, demo_result
 from report import build_report_pdf
 
@@ -86,6 +86,7 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
           padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
 .sv-card.sup {border-left-color: #b54708;}
+.sv-preview {border-left: 3px solid #b54708; padding: 2px 0 2px 10px; margin: -4px 0 10px;}
 .sv-card.sup .no {color: #b54708;}
 .sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
 .sv-card .ev {font-size: 0.86rem; color: #57606a; line-height: 1.45;}
@@ -94,8 +95,8 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-cite {font-size: 0.93rem; font-weight: 700; color: #0b4a8f; line-height: 1.4;}
 .sv-law {background: #f6f8fa; border-radius: 8px; padding: 9px 11px; margin: 5px 0 8px; font-size: 0.9rem;
          line-height: 1.6; color: #24292f; white-space: pre-line;}
-.sv-card details {margin: -2px 0 8px;}
-.sv-card summary {font-size: 0.82rem; color: #0b4a8f; cursor: pointer; padding: 4px 0;}
+.sv-card details, .sv-preview details {margin: -2px 0 8px;}
+.sv-card summary, .sv-preview summary {font-size: 0.82rem; color: #0b4a8f; cursor: pointer; padding: 4px 0;}
 .sv-act {margin: 0; padding-left: 1.25rem;}
 .sv-act li {font-size: 1rem; font-weight: 600; color: #1b1f24; line-height: 1.5; margin-bottom: 3px;}
 .sv-warn {font-size: 0.86rem; color: #7a4b00; background: #fff4dd; border-radius: 8px; padding: 8px 10px; line-height: 1.5;}
@@ -209,6 +210,25 @@ def steps_html(result: dict) -> str:
     return f'<div class="sv-steps">{chips}</div>'
 
 
+def refs_html(refs: list[dict]) -> str:
+    """관련 법령 조항(조문 제목 + 원문). 일치하는 조문이 없으면 안내 문구."""
+    if not refs:
+        return (
+            '<div class="sv-warn">원문과 대조해 일치하는 조문을 확정하지 못했습니다. '
+            "국가법령정보센터에서 직접 확인해 주세요.</div>"
+        )
+    parts = []
+    for ref in refs:
+        parts.append(f'<div class="sv-cite">{esc(law.LAW_NAME)} {esc(ref["label"])}</div>')
+        parts.append(f'<div class="sv-law">{esc(ref["text"])}</div>')
+        if ref["is_partial"]:
+            parts.append(
+                f'<details><summary>{esc(ref["article"])} 전체 보기</summary>'
+                f'<div class="sv-law">{esc(ref["full_text"])}</div></details>'
+            )
+    return "".join(parts)
+
+
 def finding_card_html(f: dict) -> str:
     by_supervisor = f.get("source") == "supervisor"
     parts = [
@@ -216,21 +236,8 @@ def finding_card_html(f: dict) -> str:
         f'<div class="name">{esc(f["hazard_name"])}</div>',
         f'<div class="ev">{esc(" · ".join(x for x in (f["target"], f["evidence"]) if x))}</div>',
         '<div class="sv-sec"><div class="sv-lab">📜 관련 법령 조항</div>',
+        refs_html(f["refs"]),
     ]
-    if f["refs"]:
-        for ref in f["refs"]:
-            parts.append(f'<div class="sv-cite">{esc(law.LAW_NAME)} {esc(ref["label"])}</div>')
-            parts.append(f'<div class="sv-law">{esc(ref["text"])}</div>')
-            if ref["is_partial"]:
-                parts.append(
-                    f'<details><summary>{esc(ref["article"])} 전체 보기</summary>'
-                    f'<div class="sv-law">{esc(ref["full_text"])}</div></details>'
-                )
-    else:
-        parts.append(
-            '<div class="sv-warn">원문과 대조해 일치하는 조문을 확정하지 못했습니다. '
-            "국가법령정보센터에서 직접 확인해 주세요.</div>"
-        )
     parts.append('</div><div class="sv-sec"><div class="sv-lab">🛠 즉시 조치 사항</div>')
     if f["actions"]:
         parts.append('<ol class="sv-act">' + "".join(f"<li>{esc(a)}</li>" for a in f["actions"]) + "</ol>")
@@ -300,9 +307,11 @@ def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
         st.caption("받은 PDF는 카카오톡·메일로 보내거나 인쇄할 수 있습니다. 감독자가 추가한 위험요인도 함께 들어갑니다.")
 
 
-def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[dict]:
-    """사진만으로 판단할 수 없는 항목. 감독자가 현장에서 확인한 항목을 골라 위험요인으로 추가할 수 있다.
+def render_unverifiable(result: dict, widget_key: str, can_add: bool, fetch_preview=None) -> list[dict]:
+    """사진만으로 판단할 수 없는 항목.
 
+    항목을 체크하면 위반일 경우 적용될 법령 조항을 바로 아래에 보여 주고,
+    현장에서 확인해 위반이 맞으면 위험요인으로 추가할 수 있다.
     '추가' 버튼을 누른 경우에만 선택 목록 [{"index", "note"}]을 돌려준다.
     """
     pending = [(i, u) for i, u in enumerate(result["unverifiable"]) if not u.get("added")]
@@ -310,25 +319,37 @@ def render_unverifiable(result: dict, widget_key: str, can_add: bool) -> list[di
         return []
     selections = []
     with st.expander(f"사진만으로 판단할 수 없는 항목 {len(pending)}건 (판정 제외 · 현장 확인)", expanded=True):
-        st.caption("현장에서 직접 확인해 위반이 맞는 항목만 체크하면 위험요인으로 추가됩니다.")
+        st.caption("항목을 체크하면 관련 법령 조항이 아래에 나옵니다. 현장에서 확인해 위반이 맞으면 위험요인으로 추가하세요.")
         for i, item in pending:
-            if st.checkbox(item["text"], key=f"unv_{widget_key}_{i}"):
-                note = st.text_input(
-                    f"현장 확인 내용 (선택) · 추가될 위험요인: {item['hazard_name'] or '미정'}",
-                    key=f"unv_note_{widget_key}_{i}", max_chars=200,
-                    placeholder="예: 높이 약 6m, 작업자 3명 모두 안전대 미체결",
+            if not st.checkbox(item["text"], key=f"unv_{widget_key}_{i}"):
+                item.pop("preview_error", None)  # 다시 체크하면 조문 조회를 재시도한다
+                continue
+            if "preview" not in item and "preview_error" not in item and fetch_preview:
+                with st.spinner("관련 법령 조항을 찾는 중…"):
+                    fetch_preview(i)
+            if "preview" in item:
+                title = "📜 관련 법령 조항" + (f" · 위반일 경우: {item['hazard_name']}" if item["hazard_name"] else "")
+                render_html(
+                    f'<div class="sv-preview"><div class="sv-lab">{esc(title)}</div>'
+                    f'{refs_html(item["preview"]["refs"])}</div>'
                 )
-                selections.append({"index": i, "note": note})
+            elif item.get("preview_error"):
+                st.error(f"조문을 불러오지 못했습니다. 체크를 풀었다가 다시 해 주세요. ({item['preview_error']})")
+            else:
+                st.caption("데모 모드에서는 조문을 불러올 수 없습니다. OpenAI API 키가 필요합니다.")
+            note = st.text_input(
+                "현장 확인 내용 (선택)", key=f"unv_note_{widget_key}_{i}", max_chars=200,
+                placeholder="예: 높이 약 6m, 작업자 3명 모두 안전대 미체결",
+            )
+            selections.append({"index": i, "note": note})
         clicked = st.button(
             f"➕ 선택한 {len(selections)}건을 위험요인으로 추가" if selections else "➕ 위험요인으로 추가",
             key=f"unv_add_{widget_key}", width="stretch", disabled=not (selections and can_add),
         )
-        if selections and not can_add:
-            st.caption("데모 모드에서는 추가할 수 없습니다. OpenAI API 키가 필요합니다.")
     return selections if clicked else []
 
 
-def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> list[dict]:
+def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fetch_preview=None) -> list[dict]:
     """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다."""
     verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
@@ -346,7 +367,7 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> 
             '<div class="sv-verdict ok"><div class="t">[위험요소 없음 / 안전수칙 준수]</div>'
             f'<div class="d">{esc(result["stage2"].get("observations", ""))}</div></div>'
         )
-        selections = render_unverifiable(result, widget_key, can_add)
+        selections = render_unverifiable(result, widget_key, can_add, fetch_preview)
     else:
         n_ai, n_sup = count_by_source(result)
         if n_sup and n_ai:
@@ -364,7 +385,7 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool) -> 
         with st.expander("📋 조치 요청 문구 복사"):
             st.code(request_message(result), language=None, wrap_lines=True)
         render_report(result, jpeg, widget_key)
-        selections = render_unverifiable(result, widget_key, can_add)
+        selections = render_unverifiable(result, widget_key, can_add, fetch_preview)
 
     timings = result["timings"]
     if timings:
@@ -474,16 +495,28 @@ elif clicked:
     result["checked_at"] = datetime.now(KST).isoformat(timespec="minutes")
     st.session_state["result"] = {"key": result_key, "data": result}
 
+def make_client() -> tuple[OpenAI, Settings]:
+    client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
+    return client, Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
+
+
 saved = st.session_state.get("result")
 if saved and saved["key"] == result_key:
-    can_add = bool(api_key and model) and not saved["data"].get("demo")
-    selections = render_result(saved["data"], jpeg, result_key[:10], can_add)
+    data = saved["data"]
+    can_add = bool(api_key and model) and not data.get("demo")
+
+    def fetch_preview(index: int) -> None:
+        """체크한 '판단 불가' 항목의 관련 조문을 찾아 둔다. 실패하면 사유를 항목에 남긴다."""
+        try:
+            preview_unverifiable(*make_client(), data, index)
+        except Exception as exc:  # noqa: BLE001
+            data["unverifiable"][index]["preview_error"] = friendly_error(exc)
+
+    selections = render_result(data, jpeg, result_key[:10], can_add, fetch_preview if can_add else None)
     if selections:
-        client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
-        cfg = Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
-        with st.status("선택한 항목의 조문 대조 및 조치사항 작성 중…", expanded=False) as status:
+        with st.status("선택한 항목을 위험요인으로 추가하는 중…", expanded=False) as status:
             try:
-                add_supervisor_findings(client, cfg, saved["data"], selections)
+                add_supervisor_findings(*make_client(), data, selections)
             except Exception as exc:  # noqa: BLE001
                 status.update(label="추가 실패", state="error")
                 st.error(friendly_error(exc))
