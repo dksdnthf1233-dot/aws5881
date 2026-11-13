@@ -58,32 +58,87 @@ st.set_page_config(
 st.markdown(
     """
 <style>
-.block-container {padding: 2.8rem 0.9rem 4rem; max-width: 720px;}
+.block-container {padding: 3.2rem 0.9rem 4rem; max-width: 720px;}
 html, body, .stApp {overflow-x: hidden;}
-h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
-.stButton button {min-height: 3.2rem;}
-.stButton button p {font-size: 1.08rem; font-weight: 700;}
-.stImage img {border-radius: 10px; max-height: 36vh; object-fit: contain; background: #f1f3f5;}
+header[data-testid="stHeader"] {background: rgba(243, 245, 249, .94); backdrop-filter: blur(6px);}
+
+/* 머리글: 남색 바탕 + 안전 주황 빗금 띠 */
+.sv-hero {position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px;
+          padding: 18px 16px 22px; margin-bottom: 14px; border-radius: 18px; color: #fff;
+          background: linear-gradient(135deg, #0f1f3d 0%, #1b3a6b 62%, #24508f 100%);
+          box-shadow: 0 8px 22px rgba(15, 31, 61, .22);}
+.sv-hero::after {content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 6px;
+                 background: repeating-linear-gradient(-45deg, #f59e0b 0 12px, #0f1f3d 12px 24px);}
+.sv-hero .ic {flex: 0 0 auto; width: 56px; height: 56px; border-radius: 16px; font-size: 32px; line-height: 56px;
+              text-align: center; background: rgba(255, 255, 255, .13); border: 1px solid rgba(255, 255, 255, .2);}
+.sv-hero .tt {font-size: 1.38rem; font-weight: 800; letter-spacing: -.01em; line-height: 1.25;}
+.sv-hero .st {font-size: 0.84rem; color: #c9d6ea; margin-top: 4px; line-height: 1.45;}
+.sv-hero .tags {display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px;}
+.sv-hero .tags span {font-size: 0.7rem; font-weight: 700; color: #ffe2b0; padding: 2px 9px; border-radius: 999px;
+                     background: rgba(245, 158, 11, .16); border: 1px solid rgba(245, 158, 11, .45);}
+
+/* 사용 안내 3단계 */
+.sv-guide {display: flex; gap: 8px; margin: 6px 0 4px;}
+.sv-guide .g {flex: 1 1 0; min-width: 0; background: #fff; border: 1px solid #e3e8f0; border-radius: 14px;
+              padding: 12px 8px 11px; text-align: center; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
+.sv-guide .n {display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 50%;
+              background: #1b3a6b; color: #fff; font-size: 0.78rem; font-weight: 800;}
+.sv-guide .e {font-size: 1.5rem; line-height: 1.5;}
+.sv-guide .k {font-size: 0.84rem; font-weight: 800; color: #1b1f24; line-height: 1.3;}
+.sv-guide .v {font-size: 0.72rem; color: #6b7686; line-height: 1.35; margin-top: 3px;}
+.sv-lock {text-align: center; font-size: 0.8rem; color: #6b7686; margin: 2px 0 10px;}
+
+/* 버튼 */
+.stButton button, .stFormSubmitButton button, .stDownloadButton button {min-height: 3.2rem; border-radius: 13px;}
+.stButton button p, .stFormSubmitButton button p, .stDownloadButton button p {font-size: 1.06rem; font-weight: 800;}
+button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); border: 0;
+  box-shadow: 0 6px 16px rgba(194, 65, 12, .30);}
+button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseButton-primaryFormSubmit"]:disabled {
+  background: #d7dce4; box-shadow: none;}
+
+/* 사진 올리기 영역 */
+[data-testid="stFileUploaderDropzone"] {background: #fff; border: 1.5px dashed #b4c0d3; border-radius: 16px;
+                                        padding: 18px 14px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
+[data-testid="stFileUploaderDropzone"] button {min-height: 2.9rem; border-radius: 11px; border-color: #1b3a6b;
+                                               color: #1b3a6b; font-weight: 800;}
+/* 기본 영어 문구(Upload, 30MB per file …)를 한글 안내로 바꾼다 */
+[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p {font-size: 0;}
+[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
+  content: "사진 올리기"; font-size: 1rem; font-weight: 800;}
+[data-testid="stFileUploaderDropzoneInstructions"] span {font-size: 0;}
+[data-testid="stFileUploaderDropzoneInstructions"] span::after {
+  content: "촬영 또는 갤러리 선택"; font-size: 0.8rem; color: #6b7686;}
+[data-testid="stButtonGroup"] button {min-height: 2.7rem; font-weight: 700;}
+
+/* 사진·접이식 영역·입력칸 */
+.stImage img {border-radius: 14px; max-height: 36vh; object-fit: contain; background: #e9edf3;
+              box-shadow: 0 2px 10px rgba(16, 24, 40, .10);}
+[data-testid="stExpander"] details {background: #fff; border-radius: 14px; border-color: #e3e8f0;
+                                    box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
+[data-testid="stExpander"] summary {font-weight: 700;}
+[data-testid="stTextInput"] input {border-radius: 11px;}
 [data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
 
 .sv-wrap, .sv-wrap * {box-sizing: border-box; max-width: 100%; overflow-wrap: anywhere; word-break: keep-all;}
 .sv-steps {display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px;}
-.sv-step {flex: 1 1 30%; min-width: 96px; border-radius: 8px; padding: 6px 8px; font-size: 0.8rem; line-height: 1.3;
-          background: #eef1f5; color: #5b6573; border: 1px solid #dfe4ea;}
+.sv-step {flex: 1 1 30%; min-width: 96px; border-radius: 11px; padding: 7px 9px; font-size: 0.8rem; line-height: 1.3;
+          background: #fff; color: #5b6573; border: 1px solid #dfe4ea;}
 .sv-step b {display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: .02em;}
 .sv-step.done {background: #e8f1fb; color: #134a86; border-color: #c5dbf3;}
 .sv-step.stop {background: #fff4dd; color: #7a4b00; border-color: #f1d79b;}
 .sv-step.skip {opacity: .55;}
 
-.sv-verdict {border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; border: 1px solid transparent;}
+.sv-verdict {border-radius: 16px; padding: 15px 16px; margin-bottom: 12px; border: 1px solid transparent;
+             box-shadow: 0 2px 8px rgba(16, 24, 40, .06);}
 .sv-verdict .t {font-size: 1.15rem; font-weight: 800; line-height: 1.35;}
 .sv-verdict .d {font-size: 0.93rem; margin-top: 6px; line-height: 1.5;}
 .sv-verdict.na {background: #f1f3f5; border-color: #d5dae0; color: #343a40;}
 .sv-verdict.ok {background: #e6f6ec; border-color: #a9dcb9; color: #0f5a2a;}
 .sv-verdict.bad {background: #fdebea; border-color: #f2b4af; color: #8f1710;}
 
-.sv-card {border: 1px solid #e1e4e8; border-left: 6px solid #d92d20; border-radius: 12px; background: #fff;
-          padding: 14px 14px 12px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(16,24,40,.06);}
+.sv-card {border: 1px solid #e3e8f0; border-left: 6px solid #d92d20; border-radius: 16px; background: #fff;
+          padding: 15px 14px 13px; margin-bottom: 14px; box-shadow: 0 3px 12px rgba(16, 24, 40, .08);}
 .sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
 .sv-card.sup {border-left-color: #b54708;}
 .sv-preview {border-left: 3px solid #b54708; padding: 2px 0 2px 10px; margin: -4px 0 10px;}
@@ -102,7 +157,8 @@ h1 {font-size: 1.45rem !important; padding-bottom: 0.2rem !important;}
 .sv-warn {font-size: 0.86rem; color: #7a4b00; background: #fff4dd; border-radius: 8px; padding: 8px 10px; line-height: 1.5;}
 .sv-ref {font-size: 0.86rem; color: #424a53; line-height: 1.5;}
 .sv-ref small {color: #8c959f;}
-.sv-foot {font-size: 0.76rem; color: #8c959f; line-height: 1.5; margin-top: 18px;}
+.sv-foot {font-size: 0.74rem; color: #8c959f; line-height: 1.55; margin-top: 22px; padding-top: 12px;
+          border-top: 1px solid #e3e8f0; text-align: center;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -122,14 +178,37 @@ def secret(name: str, default: str = "") -> str:
     return os.environ.get(name, default)
 
 
+HERO_HTML = (
+    '<div class="sv-wrap"><div class="sv-hero"><div class="ic">🦺</div><div>'
+    '<div class="tt">현장 안전 판독</div>'
+    '<div class="st">작업 사진 한 장으로 안전수칙 위반 여부를 확인합니다</div>'
+    '<div class="tags"><span>3단계 판독</span><span>법령 원문 대조</span><span>즉시 조치</span></div>'
+    "</div></div></div>"
+)
+
+GUIDE_HTML = (
+    '<div class="sv-wrap"><div class="sv-guide">'
+    '<div class="g"><span class="n">1</span><div class="e">📷</div><div class="k">사진 올리기</div>'
+    '<div class="v">촬영하거나 갤러리에서 선택</div></div>'
+    '<div class="g"><span class="n">2</span><div class="e">🔍</div><div class="k">안전 판독</div>'
+    '<div class="v">작업 여부 → 위반 검증 → 조문 확정</div></div>'
+    '<div class="g"><span class="n">3</span><div class="e">📄</div><div class="k">조치 요청</div>'
+    '<div class="v">조문·조치 확인 후 PDF 전달</div></div>'
+    "</div></div>"
+)
+
+
 def require_password() -> None:
     """APP_PASSWORD가 설정돼 있으면 비밀번호를 맞춰야 앱을 쓸 수 있다(API 요금 도용 방지)."""
     expected = secret("APP_PASSWORD")
     if not expected or st.session_state.get("authed"):
         return
-    st.title("🦺 현장 안전 판독")
-    entered = st.text_input("비밀번호", type="password")
-    if entered:
+    st.markdown(HERO_HTML, unsafe_allow_html=True)
+    st.markdown('<div class="sv-lock">🔒 허가된 사용자만 이용할 수 있습니다</div>', unsafe_allow_html=True)
+    with st.form("login", border=False):
+        entered = st.text_input("비밀번호", type="password", placeholder="접속 비밀번호를 입력하세요")
+        submitted = st.form_submit_button("접속하기", type="primary", width="stretch")
+    if submitted:
         if hmac.compare_digest(entered.encode(), expected.encode()):
             st.session_state["authed"] = True
             st.rerun()
@@ -431,8 +510,7 @@ with st.sidebar:
     )
     st.link_button("국가법령정보센터에서 원문 보기", law.LAW_URL)
 
-st.title("🦺 현장 안전 판독")
-st.caption("작업 사진을 올리면 산업안전보건기준에 관한 규칙 위반 여부·조문·즉시 조치를 알려드립니다.")
+st.markdown(HERO_HTML, unsafe_allow_html=True)
 
 demo_kind = ""
 if not api_key:
@@ -450,7 +528,7 @@ else:
     upload = st.file_uploader("현장 사진", type=UPLOAD_TYPES, label_visibility="collapsed")
 
 if upload is None:
-    st.info("위 버튼을 누르면 휴대폰 카메라로 촬영하거나 갤러리에서 사진을 고를 수 있습니다.")
+    st.markdown(GUIDE_HTML, unsafe_allow_html=True)
     st.stop()
 
 try:
