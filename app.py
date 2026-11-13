@@ -168,6 +168,9 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 .sv-card .ev {font-size: 0.86rem; color: #94a3b8; line-height: 1.45;}
 .sv-sec {margin-top: 12px; padding-top: 10px; border-top: 1px dashed #2b3957;}
 .sv-lab {font-size: 0.78rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px;}
+.sv-refnote {display: inline-block; font-size: 0.74rem; font-weight: 800; color: #fcd34d; padding: 2px 9px;
+             margin-bottom: 5px; border-radius: 999px; background: rgba(245, 158, 11, .14);
+             border: 1px solid rgba(245, 158, 11, .5);}
 .sv-cite {font-size: 0.93rem; font-weight: 700; color: #7cc4ff; line-height: 1.4;}
 .sv-law {background: #0b1324; border: 1px solid #1f2b45; border-radius: 10px; padding: 9px 11px; margin: 5px 0 8px;
          font-size: 0.9rem; line-height: 1.6; color: #dbe4f0; white-space: pre-line;}
@@ -359,6 +362,8 @@ def refs_html(refs: list[dict]) -> str:
         )
     parts = []
     for ref in refs:
+        if ref.get("reference"):
+            parts.append('<div class="sv-refnote">참고 조문 · 직접 적용 여부는 확인이 필요합니다</div>')
         parts.append(f'<div class="sv-cite">{esc(law.LAW_NAME)} {esc(ref["label"])}</div>')
         parts.append(f'<div class="sv-law">{esc(ref["text"])}</div>')
         if ref["is_partial"]:
@@ -401,7 +406,10 @@ def request_message(result: dict) -> str:
         where = f" ({f['target']})" if f["target"] else ""
         lines.append(f"{f['id']}. {f['hazard_name']}{where}")
         for ref in f["refs"]:
-            lines.append(f" - 근거: {law.LAW_NAME} {ref['label']}")
+            if ref.get("reference"):
+                lines.append(f" - 참고 조문(적용 여부 확인 필요): {law.LAW_NAME} {ref['label']}")
+            else:
+                lines.append(f" - 근거: {law.LAW_NAME} {ref['label']}")
         for i, action in enumerate(f["actions"], 1):
             lines.append(f" - 조치{i}: {action}")
         lines.append("")

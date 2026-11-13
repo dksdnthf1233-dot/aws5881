@@ -100,6 +100,7 @@ STAGE3_SELECT_SYSTEM = """당신은 「산업안전보건기준에 관한 규칙
 아래 조문 색인에서, 입력된 각 위반사항에 직접 적용되는 조문 후보를 관련성이 높은 순으로 1~3개 고른다.
 - 색인에 있는 조문번호를 그대로 쓴다(예: "제42조", "제241조의2"). 색인에 없는 번호는 쓸 수 없다.
 - 위반 행위 자체를 직접 규율하는 조문을 우선한다(예: 안전모 미착용 → 제32조, 고소작업 중 안전대 미체결 → 제42조·제44조·제32조, 용접·용단 화재감시자 미배치 → 제241조의2).
+- "참고조문허용"이 true인 위반사항은 직접 적용 여부가 불확실하더라도 같은 위험을 다루는 가장 가까운 조문을 후보에 포함한다.
 - 위반사항을 추가·삭제·수정하지 않는다. 입력된 id마다 정확히 하나의 결과를 낸다.
 
 [조문 색인]
@@ -110,7 +111,9 @@ STAGE3_FINAL_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕
 
 규칙
 1. 위반사항을 추가·삭제·수정하지 않는다. 입력된 id마다 정확히 하나의 결과를 낸다.
-2. 후보 조문의 원문을 읽고, 위반 사실에 직접 적용되는 조문만 refs에 담는다(가장 직접적인 것부터 최대 2개). 후보에 없는 조문은 쓸 수 없다. 원문을 읽어 보니 맞는 조문이 없으면 refs를 빈 배열로 둔다.
+2. 후보 조문의 원문을 읽고, 위반 사실에 직접 적용되는 조문을 refs에 담고 direct를 true로 한다(가장 직접적인 것부터 최대 2개). 후보에 없는 조문은 쓸 수 없다.
+   - 원문을 읽어 보니 직접 적용되는 조문이 없을 때: "참고조문허용"이 false인 위반사항은 refs를 빈 배열로 둔다. "참고조문허용"이 true인 위반사항은, 적용 요건(작업 종류·장소 등)이 일부 달라 직접 적용된다고 단정할 수는 없지만 같은 위험을 다루는 가장 가까운 후보 조문 1개를 direct를 false로 해서 담는다. 후보가 모두 무관하면 빈 배열로 둔다.
+   - 직접 적용되는 조문이 있으면 direct가 false인 조문은 함께 담지 않는다.
 3. refs[].paragraph: 적용되는 항 번호(원문에 "제1항"처럼 표시된 번호). 항 표시가 없는 조문이면 0.
 4. refs[].ho: 그 항에서 적용되는 호 번호 목록(예: ["1"], ["2", "5의2"]). 특정 호가 아니라 항 전체가 적용되면 빈 배열.
 5. actions: 현장대리인·현장소장에게 즉시 요구할 조치 1~3개. 각각 40자 이내의 한 문장으로, 가장 먼저 할 일부터 쓴다(예: "해당 작업 즉시 중지", "안전대를 부착설비에 체결한 뒤 작업 재개").
@@ -173,6 +176,7 @@ STAGE3_FINAL_SCHEMA = _obj({
                     "article": _STR,
                     "paragraph": {"type": "integer"},
                     "ho": _STR_LIST,
+                    "direct": {"type": "boolean"},
                 }),
             },
             "actions": _STR_LIST,
@@ -276,7 +280,9 @@ def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[
     """확정된 위반사항(violations)에만 조문과 조치사항을 붙여 돌려준다."""
     brief = [
         {"id": v["id"], "위험요인": v["hazard_name"], "대상": v["target"],
-         "근거": v.get("context") or v["evidence"]}
+         "근거": v.get("context") or v["evidence"],
+         # 감독자가 직접 확인·입력한 항목만, 딱 맞는 조문이 없을 때 가장 가까운 조문을 '참고'로 붙일 수 있다.
+         "참고조문허용": v.get("source") == "supervisor"}
         for v in violations
     ]
     brief_json = json.dumps(brief, ensure_ascii=False)
@@ -334,7 +340,12 @@ def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[
                 continue  # 후보에 없던 조문·존재하지 않는 조문은 버린다.
             if any(r["article"] == key for r in refs):
                 continue
-            refs.append(law.cite(key, ref.get("paragraph", 0), ref.get("ho", [])))
+            is_reference = ref.get("direct") is False
+            if is_reference and v.get("source") != "supervisor":
+                continue  # AI가 사진에서 확정한 위반에는 직접 적용되는 조문만 붙인다.
+            refs.append({**law.cite(key, ref.get("paragraph", 0), ref.get("ho", [])), "reference": is_reference})
+        if any(not r["reference"] for r in refs):
+            refs = [r for r in refs if not r["reference"]]  # 직접 조문이 있으면 참고 조문은 뺀다
         actions = [a.strip() for a in item.get("actions", []) if a.strip()]
         findings.append({
             **v,

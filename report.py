@@ -61,7 +61,8 @@ def _law_cell(finding: dict) -> str:
         text = _clean(ref["text"], markdown=True)
         if len(text) > MAX_LAW_CHARS:
             text = text[:MAX_LAW_CHARS].rstrip() + " … (이하 생략 · 원문 참조)"
-        blocks.append(f"**{_clean(law.LAW_NAME + ' ' + ref['label'], markdown=True)}**\n{text}")
+        note = "[참고 조문 · 적용 여부 확인 필요]\n" if ref.get("reference") else ""
+        blocks.append(f"{note}**{_clean(law.LAW_NAME + ' ' + ref['label'], markdown=True)}**\n{text}")
     return "\n\n".join(blocks) or "해당 조문 미확정 (국가법령정보센터 확인 필요)"
 
 
