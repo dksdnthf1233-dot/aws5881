@@ -36,6 +36,8 @@ from analyzer import (
     preview_unverifiable,
 )
 from demo import DEMO_KINDS, demo_result
+import pypdfium2 as pdfium
+
 from report import build_report_pdf
 
 try:  # 아이폰 HEIC 사진 지원(설치돼 있을 때만)
@@ -138,6 +140,8 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
   background: #2a3550; color: #7c879b; box-shadow: none;}
 .stImage img {border-radius: 18px; max-height: 36vh; object-fit: contain; background: #0b1324;
               border: 1px solid #222e4a;}
+/* 요청서 미리보기는 종이 모양 그대로(높이 제한 없이) 보여 준다 */
+[class*="st-key-report_pages_"] .stImage img {max-height: none; border-radius: 6px; background: #fff; border: 0;}
 [data-testid="stExpander"] details {background: #131c31; border-radius: 16px; border-color: #222e4a;}
 [data-testid="stExpander"] summary {font-weight: 700;}
 [data-testid="stTextInput"] input {border-radius: 12px;}
@@ -145,17 +149,11 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 [data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
 
 /* ── 판독 결과 ─────────────────────────────────────────────────────────── */
-.sv-steps {display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px;}
-.sv-step {flex: 1 1 30%; min-width: 96px; border-radius: 12px; padding: 7px 9px; font-size: 0.8rem; line-height: 1.3;
-          background: #101a2e; color: #94a3b8; border: 1px solid #222e4a;}
-.sv-step b {display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: .02em;}
-.sv-step.done {background: rgba(56, 139, 253, .13); color: #a5cdff; border-color: rgba(56, 139, 253, .42);}
-.sv-step.stop {background: rgba(245, 158, 11, .13); color: #fcd34d; border-color: rgba(245, 158, 11, .42);}
-.sv-step.skip {opacity: .55;}
-
 .sv-verdict {border-radius: 18px; padding: 15px 16px; margin-bottom: 12px; border: 1px solid transparent;}
 .sv-verdict .t {font-size: 1.15rem; font-weight: 800; line-height: 1.35;}
 .sv-verdict .d {font-size: 0.93rem; margin-top: 6px; line-height: 1.5;}
+.sv-verdict .vl {margin: 9px 0 0; padding-left: 1.35rem;}
+.sv-verdict .vl li {font-size: 0.98rem; font-weight: 700; line-height: 1.5; margin-bottom: 2px;}
 .sv-verdict.na {background: #131c31; border-color: #2b3957; color: #cbd5e1;}
 .sv-verdict.ok {background: rgba(34, 197, 94, .13); border-color: rgba(34, 197, 94, .48); color: #a7f3c1;}
 .sv-verdict.bad {background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .52); color: #fecaca;}
@@ -352,35 +350,6 @@ def render_html(markup: str) -> None:
     st.markdown(f'<div class="sv-wrap">{markup}</div>', unsafe_allow_html=True)
 
 
-def count_by_source(result: dict) -> tuple[int, int]:
-    """(AI가 확정한 위반 수, 감독자가 추가한 위반 수)"""
-    n_sup = sum(1 for f in result["findings"] if f.get("source") == "supervisor")
-    return len(result["findings"]) - n_sup, n_sup
-
-
-def steps_html(result: dict) -> str:
-    verdict = result["verdict"]
-    n_ai, n_sup = count_by_source(result)
-    if verdict == "not_work":
-        step2 = ("진행 안 함", "skip")
-    elif n_ai:
-        step2 = (f"명백한 위반 {n_ai}건", "done")
-    else:
-        step2 = ("명백한 위반 없음" if n_sup else "위반 없음 → 종료", "stop")
-    if n_ai or n_sup:
-        step3 = ("작성 완료" + (f" · 감독자 추가 {n_sup}건" if n_sup else ""), "done")
-    else:
-        step3 = ("진행 안 함", "skip")
-    steps = [
-        ("1단계 작업 상황", "작업 사진" if verdict != "not_work" else "비작업 → 종료",
-         "done" if verdict != "not_work" else "stop"),
-        ("2단계 위반 검증", *step2),
-        ("3단계 법령·대책", *step3),
-    ]
-    chips = "".join(f'<div class="sv-step {cls}"><b>{esc(t)}</b>{esc(d)}</div>' for t, d, cls in steps)
-    return f'<div class="sv-steps">{chips}</div>'
-
-
 def refs_html(refs: list[dict]) -> str:
     """관련 법령 조항(조문 제목 + 원문). 일치하는 조문이 없으면 안내 문구."""
     if not refs:
@@ -447,6 +416,22 @@ def report_pdf(findings_json: str, observations: str, jpeg: bytes, checked_at: s
     return build_report_pdf(result, jpeg, datetime.fromisoformat(checked_at), place, work, inspector)
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def report_preview(pdf: bytes) -> list[bytes]:
+    """요청서 PDF의 각 쪽을 이미지로 바꾼다(휴대폰 브라우저는 PDF를 화면 안에 바로 띄우지 못한다)."""
+    pages = []
+    document = pdfium.PdfDocument(pdf)
+    try:
+        for index in range(len(document)):
+            image = document[index].render(scale=2).to_pil().convert("RGB")
+            buffer = io.BytesIO()
+            image.save(buffer, "JPEG", quality=82)
+            pages.append(buffer.getvalue())
+    finally:
+        document.close()
+    return pages
+
+
 def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
     """현장대리인·현장소장에게 보내거나 출력할 '개선 요청서' PDF."""
     with st.expander("📄 개선 요청서 PDF (전송·출력용)"):
@@ -476,6 +461,15 @@ def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
             key=f"report_dl_{widget_key}",
         )
         st.caption("받은 PDF는 카카오톡·메일로 보내거나 인쇄할 수 있습니다. 감독자가 추가한 위험요인도 함께 들어갑니다.")
+        if st.toggle("👁 미리보기", key=f"report_preview_{widget_key}"):
+            try:
+                pages = report_preview(pdf)
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"미리보기를 만들지 못했습니다: {exc}")
+                return
+            with st.container(key=f"report_pages_{widget_key}"):
+                for number, page in enumerate(pages, 1):
+                    st.image(page, width="stretch", caption=f"{number} / {len(pages)}쪽")
 
 
 def render_unverifiable(result: dict, widget_key: str, can_add: bool, fetch_preview=None) -> list[dict]:
@@ -542,7 +536,6 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fet
     verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
         st.warning("🧪 데모 결과입니다. 올린 사진을 판독한 것이 아니라 화면 확인용 고정 예시입니다.")
-    render_html(steps_html(result))
     selections: list[dict] = []
     manual = ""
 
@@ -559,17 +552,10 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fet
         selections = render_unverifiable(result, widget_key, can_add, fetch_preview)
         manual = render_manual_add(widget_key, can_add)
     else:
-        n_ai, n_sup = count_by_source(result)
-        if n_sup and n_ai:
-            suffix = f" (감독자 추가 {n_sup}건 포함)"
-        elif n_sup:
-            suffix = " (감독자 현장 확인)"
-        else:
-            suffix = ""
-        work = ", ".join(stage1.get("work_types") or [])
+        names = "".join(f"<li>{esc(f['hazard_name'])}</li>" for f in findings)
         render_html(
-            f'<div class="sv-verdict bad"><div class="t">⚠️ 안전수칙 위반 {len(findings)}건{suffix}</div>'
-            f'<div class="d">{esc(work + " · " if work else "")}{esc(result["stage2"].get("observations", ""))}</div></div>'
+            f'<div class="sv-verdict bad"><div class="t">⚠️ 안전수칙 위반 {len(findings)}건</div>'
+            f'<ol class="vl">{names}</ol></div>'
             + "".join(finding_card_html(f) for f in findings)
         )
         with st.expander("📋 조치 요청 문구 복사"):

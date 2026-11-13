@@ -213,8 +213,7 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
     confirm = (
         "**위 현장 안전점검 결과를 확인하고, 지적된 개선 조치 사항을 즉시 이행할 것을 확인합니다.**\n\n"
         f"점검확인일자: {checked_at.year}년 {checked_at.month}월 {checked_at.day}일"
-        f"        점검자: {_clean(inspector, markdown=True) or '                    '}"
-        "        현장소장(현장대리인):                              (서명 또는 인)"
+        "                현장소장(현장대리인):                              (서명 또는 인)"
     )
     with pdf.table(col_widths=(CONTENT_W,), line_height=5.6, first_row_as_headings=False,
                    text_align="CENTER", padding=3, markdown=True) as table:
