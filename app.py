@@ -102,18 +102,19 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
                                         padding: 18px 14px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
 [data-testid="stFileUploaderDropzone"] button {min-height: 2.9rem; border-radius: 11px; border-color: #1b3a6b;
                                                color: #1b3a6b; font-weight: 800;}
-/* 기본 영어 문구(Upload, 30MB per file …)를 한글 안내로 바꾼다 */
+/* 기본 영어 문구(Upload, 30MB per file …)를 바꾼다: 버튼은 가운데에 두고 안내 문구는 숨긴다 */
+[data-testid="stFileUploaderDropzone"] {justify-content: center;}
+[data-testid="stFileUploaderDropzoneInstructions"] {display: none;}
 [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p {font-size: 0;}
 [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
-  content: "사진 올리기"; font-size: 1rem; font-weight: 800;}
-[data-testid="stFileUploaderDropzoneInstructions"] span {font-size: 0;}
-[data-testid="stFileUploaderDropzoneInstructions"] span::after {
-  content: "촬영 또는 갤러리 선택"; font-size: 0.8rem; color: #6b7686;}
+  content: "사진 업로드"; font-size: 1rem; font-weight: 800;}
+/* 직접 촬영: 글자 대신 카메라 그림만 있는 버튼 */
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button {min-width: 5.5rem; min-height: 3.6rem;}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button [data-testid="stIconMaterial"],
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {display: none;}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button span {gap: 0;}
 .st-key-camera_upload [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
-  content: "카메라 열기";}
-.st-key-camera_upload [data-testid="stFileUploaderDropzoneInstructions"] span::after {
-  content: "가로로 들고 찍으세요";}
-[data-testid="stFileUploaderDropzoneInstructions"] {white-space: normal;}
+  content: "📷"; font-size: 1.9rem; line-height: 1;}
 [data-testid="stButtonGroup"] button {min-height: 2.7rem; font-weight: 700;}
 
 /* 사진·접이식 영역·입력칸 */
@@ -191,7 +192,7 @@ HERO_HTML = (
     "</div></div></div>"
 )
 
-# '바로 촬영' 업로드 칸의 파일 입력에 capture 속성을 달아, 누르면 파일 선택 창 대신 후면 카메라가 열리게 한다.
+# '직접 촬영' 업로드 칸의 파일 입력에 capture 속성을 달아, 누르면 파일 선택 창 대신 후면 카메라가 열리게 한다.
 # 화면이 다시 그려지면 속성이 지워질 수 있어 주기적으로 다시 단다.
 CAMERA_JS = """
 <script>
@@ -544,9 +545,9 @@ if not api_key:
         demo_kind = DEMO_KINDS[st.selectbox("보여 줄 예시 결과", list(DEMO_KINDS))]
 
 source = st.segmented_control(
-    "사진 입력 방법", ["🖼️ 사진 선택", "📷 바로 촬영"], default="🖼️ 사진 선택", label_visibility="collapsed"
+    "사진 입력 방법", ["🖼️ 사진 선택", "📷 직접 촬영"], default="🖼️ 사진 선택", label_visibility="collapsed"
 )
-if source == "📷 바로 촬영":
+if source == "📷 직접 촬영":
     # 화면 속 미리보기 카메라(세로 고정·저해상도) 대신 휴대폰 기본 카메라 앱을 바로 연다.
     # 기본 카메라는 휴대폰을 든 방향을 사진에 기록하므로, 가로로 들고 찍으면 가로 사진으로 올라온다.
     upload = st.file_uploader("현장 사진 촬영", type=UPLOAD_TYPES, label_visibility="collapsed", key="camera_upload")
