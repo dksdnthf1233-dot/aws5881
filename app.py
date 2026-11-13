@@ -60,9 +60,123 @@ st.markdown(
 <style>
 .block-container {padding: 3.2rem 0.9rem 4rem; max-width: 720px;}
 html, body, .stApp {overflow-x: hidden;}
-header[data-testid="stHeader"] {background: rgba(243, 245, 249, .94); backdrop-filter: blur(6px);}
+header[data-testid="stHeader"] {background: rgba(6, 10, 24, .92); backdrop-filter: blur(6px);}
+.sv-wrap, .sv-wrap * {box-sizing: border-box; max-width: 100%; overflow-wrap: anywhere; word-break: keep-all;}
 
-/* 머리글: 남색 바탕 + 안전 주황 빗금 띠 */
+/* ── 머리글 카드: 모델명 배지 + 안내 문구 ─────────────────────────────── */
+.sv-top {position: relative; border-radius: 26px; padding: 20px 18px 20px; margin-bottom: 18px;
+         background: linear-gradient(135deg, #1c1408 0%, #170d1c 55%, #080c1c 100%);
+         border: 1px solid rgba(245, 158, 11, .32); box-shadow: 0 10px 30px rgba(0, 0, 0, .35);}
+.sv-top .row {display: flex; align-items: center; gap: 10px; flex-wrap: wrap;}
+.sv-top .ic {flex: 0 0 auto; width: 44px; height: 44px; border-radius: 13px; font-size: 25px; line-height: 44px;
+             text-align: center; background: linear-gradient(135deg, #ff9f0a, #f4511e);
+             box-shadow: 0 6px 16px rgba(244, 81, 30, .35);}
+.sv-top .pill {display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 13px;
+               border-radius: 999px; font-size: 0.8rem; font-weight: 800; color: #fbbf24; line-height: 1.35;
+               background: rgba(245, 158, 11, .10); border: 1px solid rgba(245, 158, 11, .55);}
+.sv-top .pill .m {color: #fde68a;}
+.sv-top .tt {font-size: 1.34rem; font-weight: 900; color: #fff; line-height: 1.42; letter-spacing: -.01em; margin-top: 14px;}
+.sv-top .tt em {font-style: normal; color: #fb923c;
+                background: linear-gradient(90deg, #fbbf24, #fb923c 55%, #f43f5e); -webkit-background-clip: text;
+                background-clip: text; -webkit-text-fill-color: transparent;}
+.sv-top .ds {font-size: 0.84rem; color: #94a3b8; line-height: 1.6; margin-top: 10px;}
+
+/* ── 사진 촬영·업로드 카드 ─────────────────────────────────────────────── */
+.st-key-upload_card {background: #131c31; border: 1px solid #222e4a; border-radius: 26px; padding: 18px 16px 18px;
+                     box-shadow: 0 10px 30px rgba(0, 0, 0, .28);}
+.sv-uhead {display: flex; align-items: center; gap: 9px; flex-wrap: wrap; padding-bottom: 14px;
+           border-bottom: 1px solid #222e4a;}
+.sv-uhead .ci {font-size: 1.25rem; line-height: 1;}
+.sv-uhead .ut {font-size: 1.08rem; font-weight: 900; color: #f8fafc;}
+.sv-uhead .ub {font-size: 0.72rem; font-weight: 800; color: #fbbf24; padding: 4px 11px; border-radius: 999px;
+               background: rgba(245, 158, 11, .12);}
+.st-key-upload_zone {border: 1.5px dashed #3a4868; border-radius: 22px; padding: 24px 14px 20px; margin-top: 6px;}
+.st-key-upload_zone:not(:has(.sv-uintro)) {padding: 14px 12px;}
+.sv-uintro {text-align: center;}
+.sv-uintro .ti {display: inline-block; width: 68px; height: 68px; border-radius: 20px; font-size: 32px; line-height: 68px;
+                background: linear-gradient(135deg, rgba(245, 158, 11, .30), rgba(244, 63, 94, .28));}
+.sv-uintro .uh {font-size: 1.06rem; font-weight: 900; color: #f8fafc; line-height: 1.4; margin-top: 14px;}
+.sv-uintro .ud {font-size: 0.84rem; color: #94a3b8; line-height: 1.6; margin: 8px 0 12px;}
+.st-key-camera_js {display: none;}
+.sv-unote {text-align: center; font-size: 0.76rem; color: #64748b; line-height: 1.5; padding: 2px 0 16px;}
+
+/* 업로드 칸 두 개를 '버튼'처럼 보이게: 기본 점선 상자·영어 문구는 숨긴다 */
+[data-testid="stFileUploaderDropzone"] {background: transparent; border: 0; padding: 0; min-height: 0; justify-content: center;}
+[data-testid="stFileUploaderDropzoneInstructions"] {display: none;}
+[data-testid="stFileUploaderDropzone"] > span {width: 100%;}
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] {width: 100%; min-height: 3.5rem; border-radius: 17px; justify-content: center;}
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p {font-size: 0;}
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p::after {font-size: 1.04rem; font-weight: 900;}
+[data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stIconMaterial"] {font-size: 1.3rem;}
+/* 카메라 버튼(주황) */
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] {
+  background: linear-gradient(135deg, #ff9f0a 0%, #e67700 100%); border: 0; color: #fff;
+  box-shadow: 0 8px 20px rgba(230, 119, 0, .32);}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p::after {content: "카메라로 즉시 촬영";}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stIconMaterial"] {font-size: 0;}
+.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stIconMaterial"]::before {content: "photo_camera"; font-size: 1.35rem;}
+/* 파일 버튼(테두리) */
+.st-key-gallery_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] {background: transparent; border: 1px solid #334262; color: #e8edf5;}
+.st-key-gallery_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p::after {content: "사진 파일 올리기";}
+/* 올린 사진 표시줄 */
+[data-testid="stFileChip"] {background: #0b1324; border: 1px solid #222e4a; border-radius: 14px;}
+
+/* ── 버튼·입력칸·접이식 영역 ───────────────────────────────────────────── */
+.stButton button, .stFormSubmitButton button, .stDownloadButton button {min-height: 3.3rem; border-radius: 16px;}
+.stButton button p, .stFormSubmitButton button p, .stDownloadButton button p {font-size: 1.06rem; font-weight: 800;}
+button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] {
+  background: linear-gradient(135deg, #ff9f0a 0%, #e67700 100%); border: 0; color: #fff;
+  box-shadow: 0 8px 20px rgba(230, 119, 0, .30);}
+button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseButton-primaryFormSubmit"]:disabled {
+  background: #2a3550; color: #7c879b; box-shadow: none;}
+.stImage img {border-radius: 18px; max-height: 36vh; object-fit: contain; background: #0b1324;
+              border: 1px solid #222e4a;}
+[data-testid="stExpander"] details {background: #131c31; border-radius: 16px; border-color: #222e4a;}
+[data-testid="stExpander"] summary {font-weight: 700;}
+[data-testid="stTextInput"] input {border-radius: 12px;}
+[data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
+
+/* ── 판독 결과 ─────────────────────────────────────────────────────────── */
+.sv-steps {display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px;}
+.sv-step {flex: 1 1 30%; min-width: 96px; border-radius: 12px; padding: 7px 9px; font-size: 0.8rem; line-height: 1.3;
+          background: #101a2e; color: #94a3b8; border: 1px solid #222e4a;}
+.sv-step b {display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: .02em;}
+.sv-step.done {background: rgba(56, 139, 253, .13); color: #a5cdff; border-color: rgba(56, 139, 253, .42);}
+.sv-step.stop {background: rgba(245, 158, 11, .13); color: #fcd34d; border-color: rgba(245, 158, 11, .42);}
+.sv-step.skip {opacity: .55;}
+
+.sv-verdict {border-radius: 18px; padding: 15px 16px; margin-bottom: 12px; border: 1px solid transparent;}
+.sv-verdict .t {font-size: 1.15rem; font-weight: 800; line-height: 1.35;}
+.sv-verdict .d {font-size: 0.93rem; margin-top: 6px; line-height: 1.5;}
+.sv-verdict.na {background: #131c31; border-color: #2b3957; color: #cbd5e1;}
+.sv-verdict.ok {background: rgba(34, 197, 94, .13); border-color: rgba(34, 197, 94, .48); color: #a7f3c1;}
+.sv-verdict.bad {background: rgba(239, 68, 68, .14); border-color: rgba(239, 68, 68, .52); color: #fecaca;}
+
+.sv-card {border: 1px solid #222e4a; border-left: 6px solid #ef4444; border-radius: 18px; background: #131c31;
+          padding: 15px 14px 13px; margin-bottom: 14px; box-shadow: 0 8px 22px rgba(0, 0, 0, .25);}
+.sv-card .no {font-size: 0.74rem; font-weight: 800; color: #f87171; letter-spacing: .04em;}
+.sv-card.sup {border-left-color: #f59e0b;}
+.sv-card.sup .no {color: #fbbf24;}
+.sv-preview {border-left: 3px solid #f59e0b; padding: 2px 0 2px 10px; margin: -4px 0 10px;}
+.sv-card .name {font-size: 1.12rem; font-weight: 800; color: #f8fafc; line-height: 1.35; margin: 2px 0 4px;}
+.sv-card .ev {font-size: 0.86rem; color: #94a3b8; line-height: 1.45;}
+.sv-sec {margin-top: 12px; padding-top: 10px; border-top: 1px dashed #2b3957;}
+.sv-lab {font-size: 0.78rem; font-weight: 800; color: #94a3b8; margin-bottom: 5px;}
+.sv-cite {font-size: 0.93rem; font-weight: 700; color: #7cc4ff; line-height: 1.4;}
+.sv-law {background: #0b1324; border: 1px solid #1f2b45; border-radius: 10px; padding: 9px 11px; margin: 5px 0 8px;
+         font-size: 0.9rem; line-height: 1.6; color: #dbe4f0; white-space: pre-line;}
+.sv-card details, .sv-preview details {margin: -2px 0 8px;}
+.sv-card summary, .sv-preview summary {font-size: 0.82rem; color: #7cc4ff; cursor: pointer; padding: 4px 0;}
+.sv-act {margin: 0; padding-left: 1.25rem;}
+.sv-act li {font-size: 1rem; font-weight: 600; color: #f1f5f9; line-height: 1.5; margin-bottom: 3px;}
+.sv-warn {font-size: 0.86rem; color: #fcd34d; background: rgba(245, 158, 11, .12); border-radius: 10px;
+          padding: 8px 10px; line-height: 1.5;}
+.sv-ref {font-size: 0.86rem; color: #cbd5e1; line-height: 1.5;}
+.sv-ref small {color: #64748b;}
+.sv-foot {font-size: 0.74rem; color: #64748b; line-height: 1.55; margin-top: 22px; padding-top: 12px;
+          border-top: 1px solid #1f2b45; text-align: center;}
+
+/* ── 비밀번호 화면 전용(기존 밝은 화면 유지) ───────────────────────────── */
 .sv-hero {position: relative; overflow: hidden; display: flex; align-items: center; gap: 14px;
           padding: 18px 16px 22px; margin-bottom: 14px; border-radius: 18px; color: #fff;
           background: linear-gradient(135deg, #0f1f3d 0%, #1b3a6b 62%, #24508f 100%);
@@ -76,95 +190,7 @@ header[data-testid="stHeader"] {background: rgba(243, 245, 249, .94); backdrop-f
 .sv-hero .tags {display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px;}
 .sv-hero .tags span {font-size: 0.7rem; font-weight: 700; color: #ffe2b0; padding: 2px 9px; border-radius: 999px;
                      background: rgba(245, 158, 11, .16); border: 1px solid rgba(245, 158, 11, .45);}
-
-/* 사용 안내 3단계 */
-.sv-guide {display: flex; gap: 8px; margin: 6px 0 4px;}
-.sv-guide .g {flex: 1 1 0; min-width: 0; background: #fff; border: 1px solid #e3e8f0; border-radius: 14px;
-              padding: 12px 8px 11px; text-align: center; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
-.sv-guide .n {display: inline-block; width: 24px; height: 24px; line-height: 24px; border-radius: 50%;
-              background: #1b3a6b; color: #fff; font-size: 0.78rem; font-weight: 800;}
-.sv-guide .e {font-size: 1.5rem; line-height: 1.5;}
-.sv-guide .k {font-size: 0.84rem; font-weight: 800; color: #1b1f24; line-height: 1.3;}
-.sv-guide .v {font-size: 0.72rem; color: #6b7686; line-height: 1.35; margin-top: 3px;}
 .sv-lock {text-align: center; font-size: 0.8rem; color: #6b7686; margin: 2px 0 10px;}
-
-/* 버튼 */
-.stButton button, .stFormSubmitButton button, .stDownloadButton button {min-height: 3.2rem; border-radius: 13px;}
-.stButton button p, .stFormSubmitButton button p, .stDownloadButton button p {font-size: 1.06rem; font-weight: 800;}
-button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] {
-  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); border: 0;
-  box-shadow: 0 6px 16px rgba(194, 65, 12, .30);}
-button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseButton-primaryFormSubmit"]:disabled {
-  background: #d7dce4; box-shadow: none;}
-
-/* 사진 올리기 영역 */
-[data-testid="stFileUploaderDropzone"] {background: #fff; border: 1.5px dashed #b4c0d3; border-radius: 16px;
-                                        padding: 18px 14px; box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
-[data-testid="stFileUploaderDropzone"] button {min-height: 2.9rem; border-radius: 11px; border-color: #1b3a6b;
-                                               color: #1b3a6b; font-weight: 800;}
-/* 기본 영어 문구(Upload, 30MB per file …)를 바꾼다: 버튼은 가운데에 두고 안내 문구는 숨긴다 */
-[data-testid="stFileUploaderDropzone"] {justify-content: center;}
-[data-testid="stFileUploaderDropzoneInstructions"] {display: none;}
-[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p {font-size: 0;}
-[data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
-  content: "사진 업로드"; font-size: 1rem; font-weight: 800;}
-/* 직접 촬영: 글자 대신 카메라 그림만 있는 버튼 */
-.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button {min-width: 5.5rem; min-height: 3.6rem;}
-.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button [data-testid="stIconMaterial"],
-.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button span:has(> [data-testid="stIconMaterial"]) {display: none;}
-.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button span {gap: 0;}
-.st-key-camera_upload [data-testid="stFileUploaderDropzone"] button [data-testid="stMarkdownContainer"] p::after {
-  content: "📷"; font-size: 1.9rem; line-height: 1;}
-[data-testid="stButtonGroup"] button {min-height: 2.7rem; font-weight: 700;}
-
-/* 사진·접이식 영역·입력칸 */
-.stImage img {border-radius: 14px; max-height: 36vh; object-fit: contain; background: #e9edf3;
-              box-shadow: 0 2px 10px rgba(16, 24, 40, .10);}
-[data-testid="stExpander"] details {background: #fff; border-radius: 14px; border-color: #e3e8f0;
-                                    box-shadow: 0 1px 3px rgba(16, 24, 40, .05);}
-[data-testid="stExpander"] summary {font-weight: 700;}
-[data-testid="stTextInput"] input {border-radius: 11px;}
-[data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
-
-.sv-wrap, .sv-wrap * {box-sizing: border-box; max-width: 100%; overflow-wrap: anywhere; word-break: keep-all;}
-.sv-steps {display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px;}
-.sv-step {flex: 1 1 30%; min-width: 96px; border-radius: 11px; padding: 7px 9px; font-size: 0.8rem; line-height: 1.3;
-          background: #fff; color: #5b6573; border: 1px solid #dfe4ea;}
-.sv-step b {display: block; font-size: 0.72rem; font-weight: 700; letter-spacing: .02em;}
-.sv-step.done {background: #e8f1fb; color: #134a86; border-color: #c5dbf3;}
-.sv-step.stop {background: #fff4dd; color: #7a4b00; border-color: #f1d79b;}
-.sv-step.skip {opacity: .55;}
-
-.sv-verdict {border-radius: 16px; padding: 15px 16px; margin-bottom: 12px; border: 1px solid transparent;
-             box-shadow: 0 2px 8px rgba(16, 24, 40, .06);}
-.sv-verdict .t {font-size: 1.15rem; font-weight: 800; line-height: 1.35;}
-.sv-verdict .d {font-size: 0.93rem; margin-top: 6px; line-height: 1.5;}
-.sv-verdict.na {background: #f1f3f5; border-color: #d5dae0; color: #343a40;}
-.sv-verdict.ok {background: #e6f6ec; border-color: #a9dcb9; color: #0f5a2a;}
-.sv-verdict.bad {background: #fdebea; border-color: #f2b4af; color: #8f1710;}
-
-.sv-card {border: 1px solid #e3e8f0; border-left: 6px solid #d92d20; border-radius: 16px; background: #fff;
-          padding: 15px 14px 13px; margin-bottom: 14px; box-shadow: 0 3px 12px rgba(16, 24, 40, .08);}
-.sv-card .no {font-size: 0.74rem; font-weight: 800; color: #d92d20; letter-spacing: .04em;}
-.sv-card.sup {border-left-color: #b54708;}
-.sv-preview {border-left: 3px solid #b54708; padding: 2px 0 2px 10px; margin: -4px 0 10px;}
-.sv-card.sup .no {color: #b54708;}
-.sv-card .name {font-size: 1.12rem; font-weight: 800; color: #1b1f24; line-height: 1.35; margin: 2px 0 4px;}
-.sv-card .ev {font-size: 0.86rem; color: #57606a; line-height: 1.45;}
-.sv-sec {margin-top: 12px; padding-top: 10px; border-top: 1px dashed #d8dde3;}
-.sv-lab {font-size: 0.78rem; font-weight: 800; color: #57606a; margin-bottom: 5px;}
-.sv-cite {font-size: 0.93rem; font-weight: 700; color: #0b4a8f; line-height: 1.4;}
-.sv-law {background: #f6f8fa; border-radius: 8px; padding: 9px 11px; margin: 5px 0 8px; font-size: 0.9rem;
-         line-height: 1.6; color: #24292f; white-space: pre-line;}
-.sv-card details, .sv-preview details {margin: -2px 0 8px;}
-.sv-card summary, .sv-preview summary {font-size: 0.82rem; color: #0b4a8f; cursor: pointer; padding: 4px 0;}
-.sv-act {margin: 0; padding-left: 1.25rem;}
-.sv-act li {font-size: 1rem; font-weight: 600; color: #1b1f24; line-height: 1.5; margin-bottom: 3px;}
-.sv-warn {font-size: 0.86rem; color: #7a4b00; background: #fff4dd; border-radius: 8px; padding: 8px 10px; line-height: 1.5;}
-.sv-ref {font-size: 0.86rem; color: #424a53; line-height: 1.5;}
-.sv-ref small {color: #8c959f;}
-.sv-foot {font-size: 0.74rem; color: #8c959f; line-height: 1.55; margin-top: 22px; padding-top: 12px;
-          border-top: 1px solid #e3e8f0; text-align: center;}
 </style>
 """,
     unsafe_allow_html=True,
@@ -192,7 +218,7 @@ HERO_HTML = (
     "</div></div></div>"
 )
 
-# '직접 촬영' 업로드 칸의 파일 입력에 capture 속성을 달아, 누르면 파일 선택 창 대신 후면 카메라가 열리게 한다.
+# 카메라 버튼(업로드 칸)의 파일 입력에 capture 속성을 달아, 누르면 파일 선택 창 대신 후면 카메라가 열리게 한다.
 # 화면이 다시 그려지면 속성이 지워질 수 있어 주기적으로 다시 단다.
 CAMERA_JS = """
 <script>
@@ -211,16 +237,49 @@ CAMERA_JS = """
 </script>
 """
 
-GUIDE_HTML = (
-    '<div class="sv-wrap"><div class="sv-guide">'
-    '<div class="g"><span class="n">1</span><div class="e">📷</div><div class="k">사진 올리기</div>'
-    '<div class="v">촬영하거나 갤러리에서 선택</div></div>'
-    '<div class="g"><span class="n">2</span><div class="e">🔍</div><div class="k">안전 판독</div>'
-    '<div class="v">작업 여부 → 위반 검증 → 조문 확정</div></div>'
-    '<div class="g"><span class="n">3</span><div class="e">📄</div><div class="k">조치 요청</div>'
-    '<div class="v">조문·조치 확인 후 PDF 전달</div></div>'
+# 비밀번호 화면은 기존 밝은 화면을 그대로 유지한다(앱 본 화면만 어두운 배색).
+LOGIN_LIGHT_CSS = """
+<style>
+.stApp {background: #f3f5f9;}
+header[data-testid="stHeader"] {background: rgba(243, 245, 249, .94);}
+[data-testid="stWidgetLabel"] p {color: #1b1f24;}
+[data-testid="stTextInputRootElement"] {background: #fff; border-color: #d0d5dd;}
+[data-testid="stTextInputRootElement"] div, [data-testid="stTextInputRootElement"] button {background: #fff;}
+[data-testid="stTextInput"] input {background: #fff; color: #1b1f24; -webkit-text-fill-color: #1b1f24;}
+[data-testid="stTextInput"] input::placeholder {color: #8c959f; -webkit-text-fill-color: #8c959f;}
+[data-testid="stTextInputRootElement"] button, [data-testid="stTextInputRootElement"] [data-testid="stIconMaterial"] {color: #1b1f24;}
+button[data-testid="stBaseButton-primaryFormSubmit"] {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%); box-shadow: 0 6px 16px rgba(194, 65, 12, .30);}
+[data-testid="stAlert"] > div {background: #fdebea; color: #8f1710;}
+[data-testid="stAlert"] p {color: #8f1710;}
+</style>
+"""
+
+UPLOAD_HEAD_HTML = (
+    '<div class="sv-wrap"><div class="sv-uhead"><span class="ci">📷</span>'
+    '<span class="ut">현장 사진 촬영 및 업로드</span><span class="ub">3단계 AI 판독</span></div></div>'
+)
+
+UPLOAD_INTRO_HTML = (
+    '<div class="sv-wrap"><div class="sv-uintro"><span class="ti">🖼️</span>'
+    '<div class="uh">현장 사진을 올리면 AI가 판독합니다</div>'
+    '<div class="ud">스마트폰 카메라로 촬영하거나 사진 파일을 선택하면, 작업 여부와 안전수칙 위반·관련 법령을 차례로 판독합니다.</div>'
     "</div></div>"
 )
+
+UPLOAD_NOTE_HTML = '<div class="sv-wrap"><div class="sv-unote">사진을 올린 뒤 ‘안전 판독 시작’을 누르면 판독이 시작됩니다</div></div>'
+
+
+def top_html(model_name: str) -> str:
+    """머리글 카드: 조끼 아이콘 + 사용 중인 AI 모델명 배지 + 안내 문구."""
+    return (
+        '<div class="sv-wrap"><div class="sv-top"><div class="row"><div class="ic">🦺</div>'
+        f'<div class="pill">✨ ⚡ <span class="m">{html.escape(model_name)}</span> 현장 작업 사진 분석</div></div>'
+        '<div class="tt">사진 업로드시 <em>위험요인•법령•조치사항</em>을 제공합니다.</div>'
+        '<div class="ds">올린 사진은 자동으로 압축해 전송하고, 「산업안전보건기준에 관한 규칙」 원문과 대조해 '
+        "[위험요인 명칭 / 관련 법령 조항 / 즉시 조치 사항]을 카드로 보여줍니다.</div>"
+        "</div></div>"
+    )
 
 
 def require_password() -> None:
@@ -228,7 +287,7 @@ def require_password() -> None:
     expected = secret("APP_PASSWORD")
     if not expected or st.session_state.get("authed"):
         return
-    st.markdown(HERO_HTML, unsafe_allow_html=True)
+    st.markdown(LOGIN_LIGHT_CSS + HERO_HTML, unsafe_allow_html=True)
     st.markdown('<div class="sv-lock">🔒 허가된 사용자만 이용할 수 있습니다</div>', unsafe_allow_html=True)
     with st.form("login", border=False):
         entered = st.text_input("비밀번호", type="password", placeholder="접속 비밀번호를 입력하세요")
@@ -535,7 +594,7 @@ with st.sidebar:
     )
     st.link_button("국가법령정보센터에서 원문 보기", law.LAW_URL)
 
-st.markdown(HERO_HTML, unsafe_allow_html=True)
+st.markdown(top_html(model or "AI"), unsafe_allow_html=True)
 
 demo_kind = ""
 if not api_key:
@@ -544,19 +603,42 @@ if not api_key:
     if not api_key and st.toggle("🧪 데모 모드 — 키 없이 화면만 체험 (실제 판독 아님)"):
         demo_kind = DEMO_KINDS[st.selectbox("보여 줄 예시 결과", list(DEMO_KINDS))]
 
-source = st.segmented_control(
-    "사진 입력 방법", ["🖼️ 사진 선택", "📷 직접 촬영"], default="🖼️ 사진 선택", label_visibility="collapsed"
-)
-if source == "📷 직접 촬영":
-    # 화면 속 미리보기 카메라(세로 고정·저해상도) 대신 휴대폰 기본 카메라 앱을 바로 연다.
-    # 기본 카메라는 휴대폰을 든 방향을 사진에 기록하므로, 가로로 들고 찍으면 가로 사진으로 올라온다.
-    upload = st.file_uploader("현장 사진 촬영", type=UPLOAD_TYPES, label_visibility="collapsed", key="camera_upload")
+def remember_source(source: str) -> None:
+    """카메라·파일 중 마지막으로 사진을 넣은 쪽을 기억한다."""
+    st.session_state["photo_source"] = source
+
+
+# 사진이 이미 있으면 안내 문구를 접어 화면을 아낀다(위젯 값은 재실행 시작 시점에 이미 들어 있다).
+has_photo = bool(st.session_state.get("camera_upload") or st.session_state.get("gallery_upload"))
+with st.container(key="upload_card"):
+    st.markdown(UPLOAD_HEAD_HTML, unsafe_allow_html=True)
+    with st.container(key="upload_zone"):
+        if not has_photo:
+            st.markdown(UPLOAD_INTRO_HTML, unsafe_allow_html=True)
+        # 카메라 버튼: 화면 속 미리보기 대신 휴대폰 기본 카메라 앱을 연다. 기본 카메라는 든 방향을 사진에
+        # 기록하므로 가로로 들고 찍으면 가로 사진으로 올라온다.
+        camera_file = st.file_uploader(
+            "카메라로 촬영", type=UPLOAD_TYPES, label_visibility="collapsed",
+            key="camera_upload", on_change=remember_source, args=("camera",),
+        )
+        gallery_file = st.file_uploader(
+            "사진 파일 올리기", type=UPLOAD_TYPES, label_visibility="collapsed",
+            key="gallery_upload", on_change=remember_source, args=("gallery",),
+        )
+        if not has_photo:
+            st.markdown(UPLOAD_NOTE_HTML, unsafe_allow_html=True)
+with st.container(key="camera_js"):
     st.html(CAMERA_JS, unsafe_allow_javascript=True)
+
+picked = st.session_state.get("photo_source")
+if picked == "camera" and camera_file:
+    upload = camera_file
+elif picked == "gallery" and gallery_file:
+    upload = gallery_file
 else:
-    upload = st.file_uploader("현장 사진", type=UPLOAD_TYPES, label_visibility="collapsed")
+    upload = camera_file or gallery_file
 
 if upload is None:
-    st.markdown(GUIDE_HTML, unsafe_allow_html=True)
     st.stop()
 
 try:
