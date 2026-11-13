@@ -21,6 +21,7 @@ from typing import Callable
 from openai import BadRequestError, OpenAI
 
 import law
+from annotate import normalize_box
 
 MAX_VIOLATIONS = 5
 MAX_UNVERIFIABLE = 6
@@ -84,6 +85,7 @@ STAGE2_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕는 �
 - observations: 작업 종류, 작업자 수와 위치, 보호구 착용 상태, 주변 설비·환경을 사실대로 2~3문장으로 쓴다.
 - violations[].hazard_name: 위험요인 명칭을 20자 안팎의 명사구로 쓴다(예: "고소작업 중 안전대 미체결", "용접작업 중 보안면 미착용").
 - violations[].target: 사진 속 누구/어디인지 쓴다(예: "사진 왼쪽 비계 상단 작업자 1명").
+- violations[].box: 위반 대상(해당 작업자나 설비)을 감싸는 사각형의 위치. 사진의 왼쪽 위를 (0, 0), 오른쪽 아래를 (1000, 1000)으로 하는 좌표로 x1·y1(왼쪽 위 모서리)과 x2·y2(오른쪽 아래 모서리)를 정수로 쓴다. 대상을 빠듯하게 감싸되, 위치를 특정할 수 없으면 네 값을 모두 0으로 둔다.
 - violations[].evidence: 위반이라고 본 근거를 사진에서 보이는 사실로 한 문장으로 쓴다.
 - violations[].certainty: "명백" 또는 "불확실". "명백"만 위반으로 확정된다.
 - unverifiable: 사진만으로는 판단할 수 없어 현장 확인이 필요한 사항(없으면 빈 배열, 최대 3건). 한 항목에는 한 가지 사항만 담는다.
@@ -146,6 +148,7 @@ STAGE2_SCHEMA = _obj({
         "items": _obj({
             "hazard_name": _STR,
             "target": _STR,
+            "box": _obj({k: {"type": "integer"} for k in ("x1", "y1", "x2", "y2")}),
             "evidence": _STR,
             "certainty": {"type": "string", "enum": ["명백", "불확실"]},
         }),
@@ -390,6 +393,8 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
                 "target": v.get("target", "").strip(),
                 "evidence": v.get("evidence", "").strip(),
                 "source": "ai",
+                "box": normalize_box(v.get("box")),
+                "pin": None,
             })
         elif v.get("hazard_name", "").strip():
             # '불확실' 판정은 위반으로 확정하지 않고 현장 확인 항목으로만 남긴다.
@@ -397,6 +402,7 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
                 "text": f"{v['hazard_name'].strip()} — {v.get('evidence', '').strip()}",
                 "hazard_name": v["hazard_name"].strip(),
                 "target": v.get("target", "").strip(),
+                "box": normalize_box(v.get("box")),
             })
     confirmed = confirmed[:MAX_VIOLATIONS]
     result["unverifiable"] = [u for u in unverifiable if u["text"]][:MAX_UNVERIFIABLE]
@@ -437,6 +443,8 @@ def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selecti
                 + (f" / 감독자 확인 내용: {note}" if note else "")
             ),
             "source": "supervisor",
+            "box": item.get("box"),   # AI가 '불확실'로 봤던 항목이면 그때 감지한 위치를 이어받는다
+            "pin": None,
         })
         picked.append(item)
         next_id += 1

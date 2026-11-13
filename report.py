@@ -127,7 +127,7 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
         row.cell(_clean(work) or "-", style=plain, colspan=3)
 
     # ---- 현장 사진 ----
-    heading("[첨부 1] 점검 대상 현장 사진")
+    heading("[첨부 1] 점검 대상 현장 사진 및 위험요인 위치")
     with Image.open(io.BytesIO(jpeg)) as img:
         ratio = img.width / img.height
     height = min(58, 110 / ratio)
@@ -170,7 +170,7 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
             for title in ("No.", "위반 항목", "관련 법령", "조치 요지"):
                 row.cell(title, align="C")
             for no, f in enumerate(items, 1):
-                draw_row(table, no, f)
+                draw_row(table, f.get("id", no), f)  # 사진의 번호 핀과 같은 번호
 
     def draw_row(table, no: int, f: dict) -> None:
         item = f"**{_clean(f['hazard_name'], markdown=True)}**"
