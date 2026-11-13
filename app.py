@@ -417,10 +417,10 @@ def request_message(result: dict) -> str:
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
-def report_pdf(findings_json: str, observations: str, jpeg: bytes, checked_at: str,
+def report_pdf(findings_json: str, jpeg: bytes, checked_at: str,
                place: str, work: str, inspector: str) -> bytes:
     """같은 내용이면 다시 만들지 않도록 캐시한 요청서 PDF."""
-    result = {"findings": json.loads(findings_json), "stage2": {"observations": observations}}
+    result = {"findings": json.loads(findings_json)}
     return build_report_pdf(result, jpeg, datetime.fromisoformat(checked_at), place, work, inspector)
 
 
@@ -456,7 +456,6 @@ def render_report(result: dict, jpeg: bytes, widget_key: str) -> None:
         try:
             pdf = report_pdf(
                 json.dumps(result["findings"], ensure_ascii=False, sort_keys=True),
-                (result.get("stage2") or {}).get("observations", ""),
                 jpeg, checked_at, place, work, inspector,
             )
         except Exception as exc:  # noqa: BLE001
