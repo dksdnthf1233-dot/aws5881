@@ -113,8 +113,9 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
 
     # ---- 기본 정보 ----
     pdf.set_font("Nanum", "", 9)
-    with pdf.table(col_widths=(28, 65, 28, 65), line_height=5.2, first_row_as_headings=False,
-                   text_align="LEFT", padding=1.6) as table:
+    # 2×2 표: 윗줄은 점검 일시·점검자, 아랫줄은 작업 장소·작업 내용
+    with pdf.table(col_widths=(30, 63, 30, 63), line_height=5.4, first_row_as_headings=False,
+                   text_align="LEFT", padding=2) as table:
         row = table.row()
         row.cell("점검 일시", style=label)
         row.cell(date_text, style=plain)
@@ -122,13 +123,12 @@ def build_report_pdf(result: dict, jpeg: bytes, checked_at: datetime,
         row.cell(_clean(inspector) or "-", style=plain)
         row = table.row()
         row.cell("작업 장소", style=label)
-        row.cell(_clean(place) or "-", style=plain, colspan=3)
-        row = table.row()
+        row.cell(_clean(place) or "-", style=plain)
         row.cell("작업 내용 및 공종", style=label)
-        row.cell(_clean(work) or "-", style=plain, colspan=3)
+        row.cell(_clean(work) or "-", style=plain)
 
     # ---- 현장 사진 ----
-    heading("[첨부 1] 점검 대상 현장 사진")
+    pdf.ln(4)
     with Image.open(io.BytesIO(jpeg)) as img:
         ratio = img.width / img.height
     height = min(58, 110 / ratio)
