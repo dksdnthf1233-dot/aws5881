@@ -27,7 +27,14 @@ from openai import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 import law
-from analyzer import AnalysisError, Settings, add_supervisor_findings, analyze, preview_unverifiable
+from analyzer import (
+    AnalysisError,
+    Settings,
+    add_manual_finding,
+    add_supervisor_findings,
+    analyze,
+    preview_unverifiable,
+)
 from demo import DEMO_KINDS, demo_result
 from report import build_report_pdf
 
@@ -134,6 +141,7 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 [data-testid="stExpander"] details {background: #131c31; border-radius: 16px; border-color: #222e4a;}
 [data-testid="stExpander"] summary {font-weight: 700;}
 [data-testid="stTextInput"] input {border-radius: 12px;}
+[data-testid="InputInstructions"] {display: none;}  /* "Press Enter to submit form" 영어 안내 숨김 */
 [data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
 
 /* ── 판독 결과 ─────────────────────────────────────────────────────────── */
@@ -512,13 +520,31 @@ def render_unverifiable(result: dict, widget_key: str, can_add: bool, fetch_prev
     return selections if clicked else []
 
 
-def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fetch_preview=None) -> list[dict]:
-    """결과를 그리고, 감독자가 위험요인으로 추가하겠다고 고른 항목 목록을 돌려준다."""
+def render_manual_add(widget_key: str, can_add: bool) -> str:
+    """AI가 놓친 위반사항을 감독자가 직접 적어 넣는 칸. '추가'를 누른 경우에만 적은 내용을 돌려준다."""
+    with st.expander("✍️ 위반사항 직접 추가", expanded=True):
+        st.caption("AI가 놓친 위반사항을 적으면 관련 법령 조항과 즉시 조치 사항을 만들어 위험요인으로 추가합니다.")
+        with st.form(f"manual_{widget_key}", clear_on_submit=True, border=False):
+            text = st.text_input(
+                "위반사항", placeholder="예: 화재감시자 미배치", max_chars=80, label_visibility="collapsed",
+            )
+            submitted = st.form_submit_button("➕ 위험요인으로 추가", width="stretch", disabled=not can_add)
+        if not can_add:
+            st.caption("데모 모드에서는 추가할 수 없습니다. OpenAI API 키가 필요합니다.")
+    return text.strip() if submitted else ""
+
+
+def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fetch_preview=None) -> tuple[list[dict], str]:
+    """결과를 그리고, 감독자가 추가하겠다고 한 것을 돌려준다.
+
+    돌려주는 값: (체크해서 추가할 '판단 불가' 항목 목록, 직접 적어 넣은 위반사항)
+    """
     verdict, stage1, findings = result["verdict"], result["stage1"], result["findings"]
     if result.get("demo"):
         st.warning("🧪 데모 결과입니다. 올린 사진을 판독한 것이 아니라 화면 확인용 고정 예시입니다.")
     render_html(steps_html(result))
     selections: list[dict] = []
+    manual = ""
 
     if verdict == "not_work":
         render_html(
@@ -531,6 +557,7 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fet
             f'<div class="d">{esc(result["stage2"].get("observations", ""))}</div></div>'
         )
         selections = render_unverifiable(result, widget_key, can_add, fetch_preview)
+        manual = render_manual_add(widget_key, can_add)
     else:
         n_ai, n_sup = count_by_source(result)
         if n_sup and n_ai:
@@ -549,12 +576,13 @@ def render_result(result: dict, jpeg: bytes, widget_key: str, can_add: bool, fet
             st.code(request_message(result), language=None, wrap_lines=True)
         render_report(result, jpeg, widget_key)
         selections = render_unverifiable(result, widget_key, can_add, fetch_preview)
+        manual = render_manual_add(widget_key, can_add)
 
     timings = result["timings"]
     if timings:
         detail = " · ".join(f"{k} {v:.1f}초" for k, v in timings.items())
         st.caption(f"판독 시간 {sum(timings.values()):.1f}초 ({detail})")
-    return selections
+    return selections, manual
 
 
 def friendly_error(exc: Exception) -> str:
@@ -700,11 +728,14 @@ if saved and saved["key"] == result_key:
         except Exception as exc:  # noqa: BLE001
             data["unverifiable"][index]["preview_error"] = friendly_error(exc)
 
-    selections = render_result(data, jpeg, result_key[:10], can_add, fetch_preview if can_add else None)
-    if selections:
-        with st.status("선택한 항목을 위험요인으로 추가하는 중…", expanded=False) as status:
+    selections, manual = render_result(data, jpeg, result_key[:10], can_add, fetch_preview if can_add else None)
+    if selections or manual:
+        with st.status("위험요인으로 추가하는 중…", expanded=False) as status:
             try:
-                add_supervisor_findings(*make_client(), data, selections)
+                if selections:
+                    add_supervisor_findings(*make_client(), data, selections)
+                if manual:
+                    add_manual_finding(*make_client(), data, manual)
             except Exception as exc:  # noqa: BLE001
                 status.update(label="추가 실패", state="error")
                 st.error(friendly_error(exc))

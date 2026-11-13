@@ -23,7 +23,6 @@ from openai import BadRequestError, OpenAI
 import law
 
 MAX_VIOLATIONS = 5
-MAX_UNVERIFIABLE = 6
 MAX_CANDIDATES = 3
 MAX_REFS = 2
 MAX_ACTIONS = 3
@@ -86,7 +85,10 @@ STAGE2_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕는 �
 - violations[].target: 사진 속 누구/어디인지 쓴다(예: "사진 왼쪽 비계 상단 작업자 1명").
 - violations[].evidence: 위반이라고 본 근거를 사진에서 보이는 사실로 한 문장으로 쓴다.
 - violations[].certainty: "명백" 또는 "불확실". "명백"만 위반으로 확정된다.
-- unverifiable: 사진만으로는 판단할 수 없어 현장 확인이 필요한 사항(없으면 빈 배열, 최대 3건). 한 항목에는 한 가지 사항만 담는다.
+- unverifiable: 이 사진의 작업에 「산업안전보건기준에 관한 규칙」이 요구하는 안전조치 가운데, 지켜졌는지를 사진만으로는 판단할 수 없어 현장 확인이 필요한 사항을 빠짐없이 모두 적는다. 개수 제한은 없다(없으면 빈 배열).
+  - 사진 속 작업 종류마다 규칙이 요구하는 조치를 하나씩 떠올려 점검한다. 예: 화기작업이면 화재감시자 배치, 소화기구 비치, 주변 가연물 제거·방호, 불티 비산방지 조치, 가스용기·호스 상태, 환기 / 고소작업이면 안전대 체결, 안전난간·작업발판, 추락방호망, 승강설비 / 중량물·양중작업이면 신호수 배치, 인양물 하부 출입통제, 줄걸이 용구 상태, 작업계획서 / 밀폐공간이면 산소·유해가스 농도 측정, 감시인 배치, 환기, 출입통제 / 전기작업이면 전원 차단·잠금, 절연용 보호구, 접지 / 기계·공구 사용이면 방호덮개, 보호구.
+  - 사진의 작업과 관련 없는 사항, 사진에서 이미 지켜지고 있음이 확인되는 사항, violations에 적은 사항은 적지 않는다.
+  - 한 항목에는 한 가지 사항만 담는다.
   - unverifiable[].item: 무엇을 확인해야 하는지 한 문장으로 쓴다.
   - unverifiable[].hazard_name: 현장 확인 결과 위반으로 밝혀질 경우의 위험요인 명칭을 violations와 같은 형식의 명사구로 쓴다(예: "고소작업 중 안전대 미체결", "인양작업 신호수 미배치").
 
@@ -399,7 +401,7 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
                 "target": v.get("target", "").strip(),
             })
     confirmed = confirmed[:MAX_VIOLATIONS]
-    result["unverifiable"] = [u for u in unverifiable if u["text"]][:MAX_UNVERIFIABLE]
+    result["unverifiable"] = [u for u in unverifiable if u["text"]]  # 개수 제한 없이 모두 보여 준다
     if not confirmed:
         result["verdict"] = "compliant"
         return result  # 명백한 위반 없음 → 즉시 종료
@@ -413,7 +415,17 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
     return result
 
 
-def _supervisor_violation(item: dict, violation_id: int, note: str = "", confirmed: bool = True) -> dict:
+def _scene_note(result: dict) -> str:
+    """3단계는 사진을 보지 못하므로, 감독자 항목에는 1단계에서 파악한 작업 상황을 글로 덧붙인다."""
+    stage1 = result.get("stage1") or {}
+    scene = stage1.get("scene", "").strip()
+    work = ", ".join(stage1.get("work_types") or [])
+    parts = [x for x in (scene, f"작업 종류: {work}" if work else "") if x]
+    return f" / 작업 상황: {' '.join(parts)}" if parts else ""
+
+
+def _supervisor_violation(result: dict, item: dict, violation_id: int, note: str = "",
+                          confirmed: bool = True) -> dict:
     """'판단 불가' 항목을 3단계에 넘길 위반사항 형태로 바꾼다."""
     if confirmed:
         context = f"감독자가 현장에서 직접 확인해 위반으로 확정함. 확인한 사항: {item['text']}"
@@ -426,7 +438,7 @@ def _supervisor_violation(item: dict, violation_id: int, note: str = "", confirm
         "hazard_name": item["hazard_name"] or item["text"],
         "target": item.get("target", ""),
         "evidence": "감독자 현장 확인" + (f": {note}" if note else ""),
-        "context": context,
+        "context": context + _scene_note(result),
         "source": "supervisor",
     }
 
@@ -439,7 +451,7 @@ def preview_unverifiable(client: OpenAI, cfg: Settings, result: dict, index: int
     """
     item = result["unverifiable"][index]
     t0 = time.monotonic()
-    finding = stage3_legal(client, cfg, [_supervisor_violation(item, 1, confirmed=False)])[0]
+    finding = stage3_legal(client, cfg, [_supervisor_violation(result, item, 1, confirmed=False)])[0]
     result["timings"]["조문 조회"] = result["timings"].get("조문 조회", 0.0) + time.monotonic() - t0
     item["preview"] = {key: finding[key] for key in ("refs", "actions", "kosha_guide")}
 
@@ -459,7 +471,7 @@ def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selecti
         if item.get("added"):
             continue
         note = (sel.get("note") or "").strip()
-        violation = _supervisor_violation(item, next_id, note)
+        violation = _supervisor_violation(result, item, next_id, note)
         if item.get("preview") and not note:
             ready.append({**violation, **item["preview"]})
         else:
@@ -476,3 +488,26 @@ def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selecti
     result["findings"].extend(sorted(ready, key=lambda f: f["id"]))
     for item in picked:
         item["added"] = True
+
+
+def add_manual_finding(client: OpenAI, cfg: Settings, result: dict, text: str) -> None:
+    """AI가 놓친 위반사항을 감독자가 직접 적어 위험요인으로 추가한다.
+
+    적은 내용(예: "화재감시자 미배치")을 위험요인 명칭으로 삼아 3단계(조문·조치사항)만 거치고,
+    결과에는 source="supervisor"로 표시해 AI 판정과 구분한다.
+    """
+    text = " ".join((text or "").split())[:80]
+    if not text:
+        return
+    violation = {
+        "id": max((f["id"] for f in result["findings"]), default=0) + 1,
+        "hazard_name": text,
+        "target": "",
+        "evidence": "감독자 직접 입력",
+        "context": f"감독자가 현장에서 직접 확인해 입력한 위반사항: {text}" + _scene_note(result),
+        "source": "supervisor",
+    }
+    t0 = time.monotonic()
+    findings = stage3_legal(client, cfg, [violation])
+    result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
+    result["findings"].extend(findings)
