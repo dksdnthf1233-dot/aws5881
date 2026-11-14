@@ -155,11 +155,6 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 .sv-sectitle {font-size: 1.15rem; font-weight: 900; color: #f8fafc; margin: 4px 0 10px;}
 .sv-subtitle {font-size: 0.98rem; font-weight: 800; color: #f8fafc; margin: 20px 0 8px; padding-left: 9px;
               border-left: 4px solid #f59e0b;}
-.sv-metrics {display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 6px 0 4px;}
-.sv-metrics .m {background: #131c31; border: 1px solid #222e4a; border-radius: 14px; padding: 10px 6px; text-align: center;}
-.sv-metrics .v {font-size: 1.35rem; font-weight: 900; color: #fbbf24; line-height: 1.2;}
-.sv-metrics .v small {font-size: 0.72rem; color: #94a3b8; margin-left: 2px; font-weight: 700;}
-.sv-metrics .k {font-size: 0.7rem; color: #94a3b8; margin-top: 3px; line-height: 1.3;}
 .sv-themes {display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;}
 .sv-themes .t {background: #131c31; border: 1px solid #222e4a; border-left: 5px solid var(--c); border-radius: 14px;
                padding: 10px 12px;}

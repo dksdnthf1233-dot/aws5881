@@ -184,27 +184,28 @@ class _Doc(FPDF):
         self.cell(0, 5, f"{self.page_no()} / {{nb}}", align="C")
 
 
-def _bars(pdf: FPDF, rows: list[tuple[str, int, str, str]], label_w: float = 52) -> None:
-    """가로 막대그래프. rows = (이름, 값, 색, 값 옆 문구)"""
+def _bars(pdf: FPDF, rows: list[tuple[str, int, str, str]], label_w: float = 52, step: float = 7) -> None:
+    """가로 막대그래프. rows = (이름, 값, 색, 값 옆 문구), step = 막대 한 줄 높이(mm)"""
     top = max((v for _, v, _, _ in rows), default=0) or 1
     bar_w = _W - label_w - 34
     for name, value, color, note in rows:
-        if pdf.get_y() + 8 > pdf.h - 16:
+        if pdf.get_y() + step + 1 > pdf.h - 16:
             pdf.add_page()
         y = pdf.get_y()
+        thick = step * 0.64
         pdf.set_font("Nanum", "", 8.6)
         pdf.set_text_color(*_BLACK)
         pdf.set_xy(_MARGIN, y)
-        pdf.cell(label_w - 2, 6.5, _clean(name)[:26], align="R")
+        pdf.cell(label_w - 2, step, _clean(name)[:26], align="R")
         pdf.set_fill_color(236, 239, 243)
-        pdf.rect(_MARGIN + label_w, y + 1, bar_w, 4.5, style="F")
+        pdf.rect(_MARGIN + label_w, y + (step - thick) / 2, bar_w, thick, style="F")
         if value:
             pdf.set_fill_color(*_rgb(color))
-            pdf.rect(_MARGIN + label_w, y + 1, max(bar_w * value / top, 0.8), 4.5, style="F")
+            pdf.rect(_MARGIN + label_w, y + (step - thick) / 2, max(bar_w * value / top, 0.8), thick, style="F")
         pdf.set_xy(_MARGIN + label_w + bar_w + 2, y)
         pdf.set_font("Nanum", "B", 8.6)
-        pdf.cell(32, 6.5, note)
-        pdf.set_y(y + 7)
+        pdf.cell(32, step, note)
+        pdf.set_y(y + step)
     pdf.set_fill_color(255, 255, 255)  # 막대 색이 뒤에 오는 표 바탕으로 번지지 않게 되돌린다
 
 
@@ -227,7 +228,27 @@ def _legend(pdf: FPDF) -> None:
     pdf.set_y(y + 6)
 
 
+# 한 장에 들어가도록 차례로 촘촘하게 만들어 보는 배치(막대 줄 높이, 표 줄 높이, 제목 위 여백, 위반 사항 개수)
+_LAYOUTS = [
+    {"step": 7.0, "line": 5.4, "gap": 4.0, "top": 10},
+    {"step": 6.0, "line": 5.0, "gap": 3.0, "top": 10},
+    {"step": 5.2, "line": 4.7, "gap": 2.4, "top": 10},
+    *({"step": 5.0, "line": 4.5, "gap": 2.0, "top": n} for n in (9, 8, 7, 6, 5)),
+]
+
+
 def build_insight_pdf(stats: Stats) -> bytes:
+    """교육용 통계 리포트 PDF. 가능하면 한 장에 들어가는 가장 여유 있는 배치를 고른다."""
+    first = None
+    for layout in _LAYOUTS:
+        data, pages = _build_insight(stats, layout)
+        first = first or data
+        if pages == 1:
+            return data
+    return first  # 어떻게 해도 넘치면 가장 보기 좋은 배치로 여러 장
+
+
+def _build_insight(stats: Stats, c: dict) -> tuple[bytes, int]:
     pdf = _Doc(format="A4", unit="mm")
     pdf.set_margins(_MARGIN, _MARGIN, _MARGIN)
     pdf.set_auto_page_break(True, 14)
@@ -241,7 +262,7 @@ def build_insight_pdf(stats: Stats) -> bytes:
     def heading(text: str) -> None:
         if pdf.get_y() + 22 > pdf.h - 16:
             pdf.add_page()
-        pdf.ln(4)
+        pdf.ln(c["gap"])
         pdf.set_font("Nanum", "B", 11)
         pdf.set_text_color(*_BLACK)
         pdf.cell(0, 7, text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
@@ -253,6 +274,9 @@ def build_insight_pdf(stats: Stats) -> bytes:
     pdf.set_text_color(*_GRAY)
     pdf.cell(0, 6, f"분석 기간 {stats.start:%Y.%m.%d} ~ {stats.end:%Y.%m.%d}  ·  작업자 안전교육 자료",
              align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font("Nanum", "", 7.5)
+    pdf.cell(0, 4.5, f"판독한 사진과 감독자가 추가한 위험요인 집계 · 법령: {law.LAW_NAME} (시행 {law.meta().get('시행일자', '')})",
+             align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_draw_color(*_BLACK)
     pdf.set_line_width(0.6)
     pdf.line(_MARGIN, pdf.get_y() + 1.5, _PAGE_W - _MARGIN, pdf.get_y() + 1.5)
@@ -262,40 +286,30 @@ def build_insight_pdf(stats: Stats) -> bytes:
 
     label = FontFace(emphasis="B", fill_color=_LIGHT, color=_BLACK)
     plain = FontFace(emphasis="", fill_color=(255, 255, 255), color=_BLACK)
-    pdf.set_font("Nanum", "", 9)
     pdf.set_text_color(*_BLACK)
-    with pdf.table(col_widths=(1, 1, 1, 1), text_align="CENTER", line_height=5.6, padding=2,
-                   first_row_as_headings=False) as table:
-        row = table.row()
-        for title in ("점검 사진", "위반 확인 사진", "위반 사항", "감독자 추가"):
-            row.cell(title, style=label)
-        row = table.row()
-        for value in (stats.inspections, stats.with_violation, stats.findings, stats.supervisor_findings):
-            row.cell(f"{value}건", style=FontFace(emphasis="B", fill_color=(255, 255, 255), color=_BLACK))
-
     heading("1. 작업별 점검·위반 현황")
     pdf.set_font("Nanum", "", 9)
-    with pdf.table(col_widths=(46, 30, 30, 30, 36), text_align="CENTER", line_height=5.4, padding=1.8,
+    with pdf.table(col_widths=(58, 40, 40, 44), text_align="CENTER", line_height=c["line"], padding=1.6,
                    headings_style=label) as table:
         row = table.row()
-        for title in ("작업 테마", "점검 사진", "위반 건수", "위반 비율", "점검 1건당 위반"):
+        for title in ("작업 테마", "점검 사진", "위반 건수", "점검 1건당 위반"):
             row.cell(title)
         for theme in THEMES:
             row = table.row(style=plain)
             row.cell(theme)
             row.cell(f"{stats.theme_inspections[theme]}건")
             row.cell(f"{stats.theme_violations[theme]}건")
-            row.cell(f"{stats.ratio(theme):.0%}")
             per = stats.theme_violations[theme] / stats.theme_inspections[theme] if stats.theme_inspections[theme] else 0
             row.cell(f"{per:.1f}건")
-    pdf.ln(3)
+    pdf.ln(2)
     _bars(pdf, [(t, stats.theme_violations[t], THEME_COLORS[t],
-                 f"{stats.theme_violations[t]}건 ({stats.ratio(t):.0%})") for t in THEMES], label_w=40)
+                 f"{stats.theme_violations[t]}건 ({stats.ratio(t):.0%})") for t in THEMES], label_w=40, step=c["step"])
 
-    heading("2. 많이 발생한 위반 사항 (상위 10)")
+    shown = min(c["top"], len(stats.types))
+    heading("2. 많이 발생한 위반 사항" + (f" (상위 {shown})" if len(stats.types) > shown else ""))
     if stats.types:
         _bars(pdf, [(t.name, t.count, THEME_COLORS[t.main_theme],
-                     f"{t.count}건 ({t.count / stats.findings:.0%})") for t in stats.types[:10]])
+                     f"{t.count}건 ({t.count / stats.findings:.0%})") for t in stats.types[:c["top"]]], step=c["step"])
         _legend(pdf)
     else:
         pdf.set_font("Nanum", "", 9)
@@ -305,7 +319,7 @@ def build_insight_pdf(stats: Stats) -> bytes:
         heading("3. 월별 위반 건수")
         pdf.set_font("Nanum", "", 8.6)
         pdf.set_text_color(*_BLACK)
-        with pdf.table(col_widths=(26, 30, 30, 30, 34, 22), text_align="CENTER", line_height=5.2,
+        with pdf.table(col_widths=(26, 30, 30, 30, 34, 22), text_align="CENTER", line_height=c["line"],
                        padding=1.6, headings_style=label) as table:
             row = table.row()
             for title in ("월", *THEMES, "합계"):
@@ -320,20 +334,14 @@ def build_insight_pdf(stats: Stats) -> bytes:
     heading(f"{4 if len(stats.monthly) > 1 else 3}. 종합 의견 및 중점 개선 사항")
     pdf.set_text_color(*_BLACK)
     pdf.set_font("Nanum", "", 9)
-    with pdf.table(col_widths=(38, _W - 38), text_align="LEFT", line_height=5.4, padding=2,
+    with pdf.table(col_widths=(38, _W - 38), text_align="LEFT", line_height=c["line"], padding=1.8,
                    first_row_as_headings=False) as table:
         for title, body in summary(stats):
             row = table.row()
             row.cell(title, style=label)
             row.cell(_clean(body), style=plain)
 
-    pdf.ln(2)
-    pdf.set_font("Nanum", "", 7.5)
-    pdf.set_text_color(*_GRAY)
-    pdf.multi_cell(0, 4, "※ 현장 안전 판독 앱으로 판독한 사진과 감독자가 추가한 위험요인을 집계했습니다. "
-                         f"법령: {law.LAW_NAME} (시행 {law.meta().get('시행일자', '')})",
-                   new_x=XPos.LMARGIN, new_y=YPos.NEXT)
-    return bytes(pdf.output())
+    return bytes(pdf.output()), pdf.pages_count
 
 
 def when(record: dict) -> str:

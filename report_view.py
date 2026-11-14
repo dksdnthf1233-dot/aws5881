@@ -93,14 +93,6 @@ def rec_tz():
     return ZoneInfo("Asia/Seoul")
 
 
-def _metric_cards(stats) -> None:
-    cards = [("점검 사진", stats.inspections), ("위반 확인 사진", stats.with_violation),
-             ("위반 사항", stats.findings), ("감독자 추가", stats.supervisor_findings)]
-    _html('<div class="sv-metrics">' + "".join(
-        f'<div class="m"><div class="v">{v}<small>건</small></div><div class="k">{esc(k)}</div></div>' for k, v in cards
-    ) + "</div>")
-
-
 def _theme_cards(stats) -> None:
     parts = []
     for theme in THEMES:
@@ -252,7 +244,6 @@ def render(store) -> None:
         start, end = end, start
     stats = compute(in_period(records, start, end), start, end)
     st.caption(f"분석 기간 {start:%Y.%m.%d} ~ {end:%Y.%m.%d}")
-    _metric_cards(stats)
 
     if not stats.inspections:
         st.info("이 기간에 저장된 점검 기록이 없습니다. 사진을 판독하면 결과가 자동으로 쌓입니다.")
