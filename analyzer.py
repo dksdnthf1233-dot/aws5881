@@ -27,6 +27,9 @@ MAX_CANDIDATES = 3
 MAX_REFS = 2
 MAX_ACTIONS = 3
 
+# 통계 리포트에서 쓰는 작업 테마(4가지). 3단계가 위반사항마다 하나를 고른다.
+WORK_THEMES = ["화기작업", "고소작업", "중장비작업", "일반 및 기타 작업"]
+
 WORK_TYPES = [
     "화기작업", "고소작업", "중장비작업", "중량물취급", "밀폐공간작업",
     "전기작업", "굴착작업", "비계·가설작업", "화학물질취급", "기계·설비정비", "기타작업",
@@ -117,7 +120,9 @@ STAGE3_FINAL_SYSTEM = """당신은 화력발전소 현장 안전감독자를 돕
 3. refs[].paragraph: 적용되는 항 번호(원문에 "제1항"처럼 표시된 번호). 항 표시가 없는 조문이면 0.
 4. refs[].ho: 그 항에서 적용되는 호 번호 목록(예: ["1"], ["2", "5의2"]). 특정 호가 아니라 항 전체가 적용되면 빈 배열.
 5. actions: 현장대리인·현장소장에게 즉시 요구할 조치 1~3개. 각각 40자 이내의 한 문장으로, 가장 먼저 할 일부터 쓴다(예: "해당 작업 즉시 중지", "안전대를 부착설비에 체결한 뒤 작업 재개").
-6. kosha_guide: 직접 관련된 KOSHA Guide의 지침명을 확실히 아는 경우에만 적는다(지침번호는 확실할 때만 함께 적는다). 조금이라도 불확실하면 빈 문자열로 둔다.
+6. work_theme: 이 위반이 속한 작업 테마를 하나 고른다. "화기작업"(용접·용단·그라인딩 등 불꽃·고열이 나는 작업), "고소작업"(높이 2미터 이상 장소, 비계·사다리·고소작업대·개구부 주변 작업), "중장비작업"(크레인·지게차·굴착기 등 건설기계·양중기 사용 및 그 인양·유도 작업), 그 밖은 "일반 및 기타 작업". 위반 내용이 직접 관련된 작업을 고른다(예: 용접 중 보안면 미착용 → 화기작업, 비계 위 안전대 미체결 → 고소작업, 인양물 하부 출입 → 중장비작업).
+7. violation_type: 통계를 내기 위한 표준 위반 유형. 작업 맥락과 대상을 뺀 짧은 명사구로 쓴다(예: "안전모 미착용", "안전대 미체결", "보안경 미착용", "화재감시자 미배치", "소화기 미비치", "안전난간 미설치", "신호수 미배치", "인양물 하부 출입통제 미흡", "방호덮개 미설치"). 같은 유형은 항상 같은 표현으로 쓴다.
+8. kosha_guide: 직접 관련된 KOSHA Guide의 지침명을 확실히 아는 경우에만 적는다(지침번호는 확실할 때만 함께 적는다). 조금이라도 불확실하면 빈 문자열로 둔다.
 한국어로 답한다."""
 
 
@@ -180,6 +185,8 @@ STAGE3_FINAL_SCHEMA = _obj({
                 }),
             },
             "actions": _STR_LIST,
+            "work_theme": {"type": "string", "enum": WORK_THEMES},
+            "violation_type": _STR,
             "kosha_guide": _STR,
         }),
     },
@@ -276,8 +283,11 @@ def stage2_verify(client: OpenAI, cfg: Settings, jpeg: bytes, note: str, stage1:
     )
 
 
-def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[dict]:
-    """확정된 위반사항(violations)에만 조문과 조치사항을 붙여 돌려준다."""
+def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict], scene: str = "") -> list[dict]:
+    """확정된 위반사항(violations)에만 조문과 조치사항을 붙여 돌려준다.
+
+    scene은 1단계가 파악한 사진 속 작업 상황이다(3단계는 사진을 보지 못하므로 작업 테마 분류에 쓴다).
+    """
     brief = [
         {"id": v["id"], "위험요인": v["hazard_name"], "대상": v["target"],
          "근거": v.get("context") or v["evidence"],
@@ -319,7 +329,8 @@ def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[
         [
             {"role": "system", "content": STAGE3_FINAL_SYSTEM},
             {"role": "user", "content": (
-                f"위반사항:\n{brief_json}\n\n위반사항별 후보 조문:\n{per_violation}"
+                (f"사진 속 작업 상황: {scene}\n\n" if scene else "")
+                + f"위반사항:\n{brief_json}\n\n위반사항별 후보 조문:\n{per_violation}"
                 f"\n\n후보 조문 원문:\n{law_texts}"
             )},
         ],
@@ -351,6 +362,8 @@ def stage3_legal(client: OpenAI, cfg: Settings, violations: list[dict]) -> list[
             **v,
             "refs": refs[:MAX_REFS],
             "actions": actions[:MAX_ACTIONS],
+            "work_theme": item.get("work_theme") if item.get("work_theme") in WORK_THEMES else "",
+            "violation_type": " ".join((item.get("violation_type") or "").split()),
             "kosha_guide": (item.get("kosha_guide") or "").strip(),
         })
     return findings
@@ -420,10 +433,17 @@ def analyze(client: OpenAI, cfg: Settings, jpeg: bytes, thumb_jpeg: bytes, note:
     # ---- 3단계: 법령 확정 + 개선대책 ----
     notify(3, "3단계 · 관련 조문 대조 및 조치사항 작성 중…")
     t0 = time.monotonic()
-    result["findings"] = stage3_legal(client, cfg, confirmed)
+    result["findings"] = stage3_legal(client, cfg, confirmed, scene_text(result))
     timings["3단계"] = time.monotonic() - t0
     result["verdict"] = "violation"
     return result
+
+
+def scene_text(result: dict) -> str:
+    """1단계에서 파악한 작업 상황 한 줄(장면 + 작업 종류)."""
+    stage1 = result.get("stage1") or {}
+    work = ", ".join(stage1.get("work_types") or [])
+    return " ".join(x for x in (stage1.get("scene", "").strip(), f"작업 종류: {work}" if work else "") if x)
 
 
 def _scene_note(result: dict) -> str:
@@ -462,9 +482,9 @@ def preview_unverifiable(client: OpenAI, cfg: Settings, result: dict, index: int
     """
     item = result["unverifiable"][index]
     t0 = time.monotonic()
-    finding = stage3_legal(client, cfg, [_supervisor_violation(result, item, 1, confirmed=False)])[0]
+    finding = stage3_legal(client, cfg, [_supervisor_violation(result, item, 1, confirmed=False)], scene_text(result))[0]
     result["timings"]["조문 조회"] = result["timings"].get("조문 조회", 0.0) + time.monotonic() - t0
-    item["preview"] = {key: finding[key] for key in ("refs", "actions", "kosha_guide")}
+    item["preview"] = {key: finding[key] for key in ("refs", "actions", "kosha_guide", "work_theme", "violation_type")}
 
 
 def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selections: list[dict]) -> None:
@@ -494,7 +514,7 @@ def add_supervisor_findings(client: OpenAI, cfg: Settings, result: dict, selecti
 
     if todo:
         t0 = time.monotonic()
-        ready += stage3_legal(client, cfg, todo)
+        ready += stage3_legal(client, cfg, todo, scene_text(result))
         result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
     result["findings"].extend(sorted(ready, key=lambda f: f["id"]))
     for item in picked:
@@ -519,6 +539,6 @@ def add_manual_finding(client: OpenAI, cfg: Settings, result: dict, text: str) -
         "source": "supervisor",
     }
     t0 = time.monotonic()
-    findings = stage3_legal(client, cfg, [violation])
+    findings = stage3_legal(client, cfg, [violation], scene_text(result))
     result["timings"]["추가"] = result["timings"].get("추가", 0.0) + time.monotonic() - t0
     result["findings"].extend(findings)

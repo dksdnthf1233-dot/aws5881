@@ -27,6 +27,8 @@ from openai import (
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 import law
+import records as rec
+import report_view
 from analyzer import (
     AnalysisError,
     Settings,
@@ -147,6 +149,35 @@ button[data-testid="stBaseButton-primary"]:disabled, button[data-testid="stBaseB
 [data-testid="stTextInput"] input {border-radius: 12px;}
 [data-testid="InputInstructions"] {display: none;}  /* "Press Enter to submit form" 영어 안내 숨김 */
 [data-testid="stCode"] pre, [data-testid="stCode"] code {white-space: pre-wrap !important; word-break: break-word !important;}
+
+/* ── 통계 리포트 ─────────────────────────────────────────────────────── */
+.st-key-view button {min-height: 2.9rem; font-weight: 800;}
+.sv-sectitle {font-size: 1.15rem; font-weight: 900; color: #f8fafc; margin: 4px 0 10px;}
+.sv-subtitle {font-size: 0.98rem; font-weight: 800; color: #f8fafc; margin: 20px 0 8px; padding-left: 9px;
+              border-left: 4px solid #f59e0b;}
+.sv-metrics {display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 6px 0 4px;}
+.sv-metrics .m {background: #131c31; border: 1px solid #222e4a; border-radius: 14px; padding: 10px 6px; text-align: center;}
+.sv-metrics .v {font-size: 1.35rem; font-weight: 900; color: #fbbf24; line-height: 1.2;}
+.sv-metrics .v small {font-size: 0.72rem; color: #94a3b8; margin-left: 2px; font-weight: 700;}
+.sv-metrics .k {font-size: 0.7rem; color: #94a3b8; margin-top: 3px; line-height: 1.3;}
+.sv-themes {display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;}
+.sv-themes .t {background: #131c31; border: 1px solid #222e4a; border-left: 5px solid var(--c); border-radius: 14px;
+               padding: 10px 12px;}
+.sv-themes .n {font-size: 0.82rem; font-weight: 800; color: #e2e8f0;}
+.sv-themes .v {font-size: 1.4rem; font-weight: 900; color: var(--c); line-height: 1.3;}
+.sv-themes .v small {font-size: 0.74rem; color: #94a3b8; margin-left: 3px; font-weight: 700;}
+.sv-themes .s {font-size: 0.76rem; color: #94a3b8;}
+.sv-summary {background: linear-gradient(135deg, #1c1408 0%, #131c31 70%); border: 1px solid rgba(245, 158, 11, .35);
+             border-radius: 18px; padding: 14px 14px 6px;}
+.sv-summary .h {font-size: 1rem; font-weight: 900; color: #fbbf24; margin-bottom: 8px;}
+.sv-summary .row {padding: 8px 0; border-top: 1px dashed #2b3957;}
+.sv-summary .row:first-child {border-top: 0; padding-top: 0;}
+.sv-summary .k {font-size: 0.76rem; font-weight: 800; color: #fbbf24; margin-bottom: 3px;}
+.sv-summary .b {font-size: 0.92rem; color: #e2e8f0; line-height: 1.6; white-space: pre-line;}
+.st-key-restore_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] {
+  background: transparent; border: 1px dashed #3a4868; color: #cbd5e1; min-height: 3rem;}
+.st-key-restore_upload [data-testid="stFileUploaderDropzone"] button[data-testid="stBaseButton-secondary"] [data-testid="stMarkdownContainer"] p::after {
+  content: "백업 파일(JSON) 선택"; font-size: 0.92rem;}
 
 /* ── 판독 결과 ─────────────────────────────────────────────────────────── */
 .sv-verdict {border-radius: 18px; padding: 15px 16px; margin-bottom: 12px; border: 1px solid transparent;}
@@ -289,6 +320,16 @@ def top_html(model_name: str) -> str:
         "[위험요인 명칭 / 관련 법령 조항 / 즉시 조치 사항]을 카드로 보여줍니다.</div>"
         "</div></div>"
     )
+
+
+@st.cache_resource(show_spinner=False)
+def get_store(token: str, repo: str, branch: str, api: str = ""):
+    """판독 기록 저장소. GitHub 설정이 있으면 GitHub, 없으면 앱 서버 임시 파일."""
+    if token and repo:
+        return rec.GitHubStore(token, repo, branch or "app-data", api=api or "https://api.github.com")
+    from pathlib import Path
+
+    return rec.LocalStore(Path(__file__).resolve().parent / "records" / "inspections.json")
 
 
 def require_password() -> None:
@@ -617,6 +658,13 @@ with st.sidebar:
 
 st.markdown(top_html(model or "AI"), unsafe_allow_html=True)
 
+store = get_store(secret("GITHUB_TOKEN"), secret("GITHUB_REPO"), secret("GITHUB_DATA_BRANCH"), secret("GITHUB_API_URL"))
+view = st.segmented_control("화면", ["📷 현장 판독", "📊 통계 리포트"], default="📷 현장 판독",
+                            key="view", label_visibility="collapsed", width="stretch")
+if view == "📊 통계 리포트":
+    report_view.render(store)
+    st.stop()
+
 demo_kind = ""
 if not api_key:
     st.warning("OpenAI API 키가 설정되지 않았습니다. 아래에 입력하거나 secrets에 `OPENAI_API_KEY`를 등록해 주세요.")
@@ -703,11 +751,16 @@ elif clicked:
         status.update(label="판독 완료", state="complete")
     result["checked_at"] = datetime.now(KST).isoformat(timespec="minutes")
     st.session_state["result"] = {"key": result_key, "data": result}
+    if error := report_view.save_record(store, rec.build_record(result_key, result)):
+        st.warning(f"판독 결과를 통계 기록에 저장하지 못했습니다: {error}")
 
 def make_client() -> tuple[OpenAI, Settings]:
     client = OpenAI(api_key=api_key, base_url=secret("OPENAI_BASE_URL") or None, timeout=120, max_retries=1)
     return client, Settings(model=model, fast_model=secret("OPENAI_MODEL_FAST"))
 
+
+if error := st.session_state.pop("save_error", None):
+    st.warning(f"추가한 위험요인을 통계 기록에 저장하지 못했습니다: {error}")
 
 saved = st.session_state.get("result")
 if saved and saved["key"] == result_key:
@@ -733,6 +786,9 @@ if saved and saved["key"] == result_key:
                 status.update(label="추가 실패", state="error")
                 st.error(friendly_error(exc))
                 st.stop()
+        # 감독자가 추가한 위험요인까지 통계 기록에 반영한다.
+        if error := report_view.save_record(store, rec.build_record(result_key, data)):
+            st.session_state["save_error"] = error
         st.rerun()  # 추가된 위험요인 카드를 포함해 결과를 다시 그린다.
 
 render_html(
