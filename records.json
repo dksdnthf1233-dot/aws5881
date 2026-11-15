@@ -98,6 +98,47 @@
      "작업자를 인양 철골 부재에서 하차",
      "인양물 주변 출입통제 후 작업 재개"
     ]
+   },
+   {
+    "hazard_name": "인양구역 출입통제 미실시",
+    "violation_type": "인양구역 출입통제 미실시",
+    "theme": "중장비작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제146조",
+      "label": "제146조(크레인 작업 시의 조치) 제1항 제4호",
+      "reference": false
+     }
+    ],
+    "actions": [
+     "인양 작업반경 내 작업자 즉시 대피",
+     "인양구역에 바리케이드와 출입통제원 배치",
+     "통제구역 확보 후 인양 작업 재개"
+    ]
+   },
+   {
+    "hazard_name": "고소작업 중 안전대 미체결",
+    "violation_type": "안전대 미체결",
+    "theme": "고소작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제32조",
+      "label": "제32조(보호구의 지급 등) 제1항 제2호",
+      "reference": false
+     },
+     {
+      "article": "제44조",
+      "label": "제44조(안전대의 부착설비 등) 제1항",
+      "reference": false
+     }
+    ],
+    "actions": [
+     "해당 고소작업을 즉시 중지",
+     "안전대를 부착설비에 체결",
+     "안전대와 부착설비 이상 유무 점검"
+    ]
    }
   ]
  }
