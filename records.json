@@ -11,6 +11,61 @@
    "화기작업",
    "일반 및 기타 작업"
   ],
-  "findings": []
+  "findings": [
+   {
+    "hazard_name": "화기작업 화재감시자 미배치",
+    "violation_type": "화재감시자 미배치",
+    "theme": "화기작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제241조의2",
+      "label": "제241조의2(화재감시자) 제1항",
+      "reference": true
+     }
+    ],
+    "actions": [
+     "작업반경 내 가연성물질 존재 여부 확인",
+     "배치 요건 해당 시 작업을 즉시 중지",
+     "화재감시자 배치 후 작업을 재개"
+    ]
+   },
+   {
+    "hazard_name": "화기작업 소화기구 미비치",
+    "violation_type": "소화기 미비치",
+    "theme": "화기작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제241조",
+      "label": "제241조(화재위험작업 시의 준수사항) 제2항 제3호",
+      "reference": false
+     }
+    ],
+    "actions": [
+     "그라인더 작업을 즉시 중지",
+     "작업장 인근에 적정 소화기구 비치",
+     "소화기구 확인 후 작업 재개"
+    ]
+   },
+   {
+    "hazard_name": "불티 비산구역 가연물 방치",
+    "violation_type": "불티 비산방지조치 미흡",
+    "theme": "화기작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제241조",
+      "label": "제241조(화재위험작업 시의 준수사항) 제2항 제3호·제4호",
+      "reference": false
+     }
+    ],
+    "actions": [
+     "그라인더 작업을 즉시 중지",
+     "비산구역 가연물을 제거하거나 방호",
+     "소화기 비치 후 불티 차단조치 실시"
+    ]
+   }
+  ]
  }
 ]
