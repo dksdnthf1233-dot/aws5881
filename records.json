@@ -152,6 +152,25 @@
   "themes": [
    "고소작업"
   ],
-  "findings": []
+  "findings": [
+   {
+    "hazard_name": "신호수 미배치",
+    "violation_type": "신호수 미배치",
+    "theme": "고소작업",
+    "source": "supervisor",
+    "articles": [
+     {
+      "article": "제186조",
+      "label": "제186조(고소작업대 설치 등의 조치) 제3항 제2호",
+      "reference": true
+     }
+    ],
+    "actions": [
+     "고소작업차 운전·이동을 즉시 중지",
+     "유도자 1명을 즉시 배치",
+     "운전자와 유도자 간 신호를 정한 뒤 재개"
+    ]
+   }
+  ]
  }
 ]
